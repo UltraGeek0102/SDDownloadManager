@@ -1,281 +1,260 @@
-//
-//  SDDownloadManager.swift
-//  SDDownloadManager
-//
-//  Created by Sagar Dagdu on 8/4/17.
-//  Copyright © 2017 Sagar Dagdu. All rights reserved.
-//
-//  Permission is hereby granted, free of charge, to any person obtaining a copy
-//  of this software and associated documentation files (the "Software"), to deal
-//  in the Software without restriction, including without limitation the rights
-//  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-//  copies of the Software, and to permit persons to whom the Software is
-//  furnished to do so, subject to the following conditions:
-//
-//  The above copyright notice and this permission notice shall be included in
-//  all copies or substantial portions of the Software.
-//
-//  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-//  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-//  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-//  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-//  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-//  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-//  THE SOFTWARE.
-
 import UIKit
 import UserNotifications
 
 public final class SDDownloadManager: NSObject {
-    public typealias DownloadCompletionBlock = (_ error: Error?, _ fileUrl: URL?) -> Void
-    public typealias DownloadProgressBlock = (_ progress: CGFloat) -> Void
+
+    // MARK: - Types
+
+    public typealias DownloadCompletionBlock    = (_ error: Error?, _ fileUrl: URL?) -> Void
+    public typealias DownloadProgressBlock      = (_ progress: CGFloat, _ downloaded: Int64, _ total: Int64) -> Void
     public typealias BackgroundDownloadCompletionHandler = () -> Void
+
+    // MARK: - Singleton
+
+    public static let shared = SDDownloadManager()
 
     // MARK: - Properties
 
-    private var session: URLSession!
     private let downloadQueue = DispatchQueue(label: "com.sddownloadmanager.queue", attributes: .concurrent)
     private var _ongoingDownloads: [String: SDDownloadObject] = [:]
     private var ongoingDownloads: [String: SDDownloadObject] {
-        get {
-            return downloadQueue.sync { _ongoingDownloads }
-        }
-        set {
-            downloadQueue.async(flags: .barrier) {
-                self._ongoingDownloads = newValue
-            }
-        }
+        get    { downloadQueue.sync { _ongoingDownloads } }
+        set    { downloadQueue.async(flags: .barrier) { self._ongoingDownloads = newValue } }
     }
 
+    private var session:           URLSession!
     private var backgroundSession: URLSession!
 
     public var backgroundCompletionHandler: BackgroundDownloadCompletionHandler?
     public var showLocalNotificationOnBackgroundDownloadDone = true
     public var localNotificationText: String?
 
-    public static let shared = SDDownloadManager()
+    // MARK: - Init
 
-    // MARK: - Public methods
+    override private init() {
+        super.init()
+        let defaultConfig = URLSessionConfiguration.default
+        session = URLSession(configuration: defaultConfig, delegate: self, delegateQueue: nil)
 
+        let bgConfig = URLSessionConfiguration.background(withIdentifier: Bundle.main.bundleIdentifier! + ".download")
+        bgConfig.isDiscretionary = false
+        bgConfig.sessionSendsLaunchEvents = true
+        backgroundSession = URLSession(configuration: bgConfig, delegate: self, delegateQueue: nil)
+    }
+
+    // MARK: - Public API
+
+    /// Start a download.
+    /// - Parameters:
+    ///   - request: The URLRequest to download.
+    ///   - directory: Subdirectory within Caches to save the file.
+    ///   - fileName: Override filename; defaults to suggested filename from response.
+    ///   - shouldDownloadInBackground: Use background URLSession (survives app suspension).
+    ///   - progressBlock: Called with (fraction 0-1, bytesDownloaded, totalBytes).
+    ///   - completionBlock: Called on completion with error or final file URL.
+    /// - Returns: A unique key identifying this download, or nil if already in progress.
+    @discardableResult
     public func downloadFile(withRequest request: URLRequest,
                              inDirectory directory: String? = nil,
                              withName fileName: String? = nil,
-                             shouldDownloadInBackground: Bool = false,
+                             shouldDownloadInBackground: Bool = true,
                              onProgress progressBlock: DownloadProgressBlock? = nil,
                              onCompletion completionBlock: @escaping DownloadCompletionBlock) -> String?
     {
         guard let url = request.url else {
-            completionBlock(NSError(domain: "SDDownloadManager", code: 0, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"]), nil)
+            completionBlock(NSError(domain: "SDDownloadManager", code: 0,
+                                   userInfo: [NSLocalizedDescriptionKey: "Invalid URL"]), nil)
             return nil
         }
 
-        let key = getDownloadKey(withUrl: url)
-
+        let key = url.absoluteString
         if isDownloadInProgress(forKey: key) {
-            completionBlock(NSError(domain: "SDDownloadManager", code: 1, userInfo: [NSLocalizedDescriptionKey: "Download already in progress"]), nil)
+            completionBlock(NSError(domain: "SDDownloadManager", code: 1,
+                                   userInfo: [NSLocalizedDescriptionKey: "Already in progress"]), nil)
             return nil
         }
 
-        let downloadTask: URLSessionDownloadTask
-        if shouldDownloadInBackground {
-            downloadTask = backgroundSession.downloadTask(with: request)
-        } else {
-            downloadTask = session.downloadTask(with: request)
-        }
+        let task = shouldDownloadInBackground
+            ? backgroundSession.downloadTask(with: request)
+            : session.downloadTask(with: request)
 
-        let download = SDDownloadObject(downloadTask: downloadTask,
-                                        progressBlock: progressBlock,
-                                        completionBlock: completionBlock,
-                                        fileName: fileName,
-                                        directoryName: directory)
+        let obj = SDDownloadObject(downloadTask: task,
+                                   progressBlock: progressBlock,
+                                   completionBlock: completionBlock,
+                                   fileName: fileName,
+                                   directoryName: directory)
+        downloadQueue.async(flags: .barrier) { self._ongoingDownloads[key] = obj }
 
-        downloadQueue.async(flags: .barrier) {
-            self._ongoingDownloads[key] = download
-        }
-        downloadTask.resume()
+        // Start Live Activity
+        let name = fileName ?? url.lastPathComponent.isEmpty ? url.host ?? "Download" : url.lastPathComponent
+        LiveActivityBridge.shared.start(id: key, filename: name)
+
+        task.resume()
         return key
     }
 
-    public func getDownloadKey(withUrl url: URL) -> String {
-        return url.absoluteString
+    /// Resume a previously paused download using stored resume data.
+    @discardableResult
+    public func resumeDownload(withKey key: String,
+                                inDirectory directory: String? = nil,
+                                withName fileName: String? = nil,
+                                onProgress progressBlock: DownloadProgressBlock? = nil,
+                                onCompletion completionBlock: @escaping DownloadCompletionBlock) -> Bool
+    {
+        guard let resumeData = UserDefaults.standard.data(forKey: "resume_\(key)") else {
+            return false
+        }
+        UserDefaults.standard.removeObject(forKey: "resume_\(key)")
+
+        let task = backgroundSession.downloadTask(withResumeData: resumeData)
+        let obj = SDDownloadObject(downloadTask: task,
+                                   progressBlock: progressBlock,
+                                   completionBlock: completionBlock,
+                                   fileName: fileName,
+                                   directoryName: directory)
+        downloadQueue.async(flags: .barrier) { self._ongoingDownloads[key] = obj }
+
+        let name = fileName ?? URL(string: key)?.lastPathComponent ?? "Download"
+        LiveActivityBridge.shared.start(id: key, filename: name)
+        task.resume()
+        return true
     }
 
-    public func currentDownloads() -> [String] {
-        return downloadQueue.sync { Array(_ongoingDownloads.keys) }
+    public func pauseDownload(forKey key: String) {
+        downloadQueue.async {
+            guard let obj = self._ongoingDownloads[key] else { return }
+            obj.downloadTask.cancel(byProducingResumeData: { data in
+                if let data = data {
+                    UserDefaults.standard.set(data, forKey: "resume_\(key)")
+                }
+                self.downloadQueue.async(flags: .barrier) {
+                    self._ongoingDownloads.removeValue(forKey: key)
+                }
+                LiveActivityBridge.shared.end(id: key, success: false)
+            })
+        }
+    }
+
+    public func cancelDownload(forKey key: String) {
+        downloadQueue.async(flags: .barrier) {
+            self._ongoingDownloads[key]?.downloadTask.cancel()
+            self._ongoingDownloads.removeValue(forKey: key)
+            UserDefaults.standard.removeObject(forKey: "resume_\(key)")
+        }
+        LiveActivityBridge.shared.end(id: key, success: false)
     }
 
     public func cancelAllDownloads() {
-        downloadQueue.async(flags: .barrier) {
-            for (_, download) in self._ongoingDownloads {
-                download.downloadTask.cancel()
-            }
-            self._ongoingDownloads.removeAll()
-        }
+        downloadQueue.sync { _ongoingDownloads.keys }.forEach { cancelDownload(forKey: $0) }
     }
 
-    public func cancelDownload(forUniqueKey key: String?) {
-        guard let key = key else { return }
-
-        downloadQueue.async(flags: .barrier) {
-            if let download = self._ongoingDownloads[key] {
-                download.downloadTask.cancel()
-                self._ongoingDownloads.removeValue(forKey: key)
-            }
-        }
+    public func isDownloadInProgress(forKey key: String) -> Bool {
+        downloadQueue.sync { _ongoingDownloads[key] != nil }
     }
 
-    public func pause(forUniqueKey key: String?) {
-        guard let key = key else { return }
-
-        downloadQueue.async {
-            self._ongoingDownloads[key]?.downloadTask.suspend()
-        }
+    public func hasResumeData(forKey key: String) -> Bool {
+        UserDefaults.standard.data(forKey: "resume_\(key)") != nil
     }
 
-    public func resume(forUniqueKey key: String?) {
-        guard let key = key else { return }
-
-        downloadQueue.async {
-            self._ongoingDownloads[key]?.downloadTask.resume()
-        }
+    public func currentDownloadKeys() -> [String] {
+        downloadQueue.sync { Array(_ongoingDownloads.keys) }
     }
 
-    public func isDownloadInProgress(forKey key: String?) -> Bool {
-        guard let key = key else { return false }
-        return downloadQueue.sync { _ongoingDownloads[key] != nil }
-    }
-
-    public func alterDownload(withKey key: String?,
-                              onProgress progressBlock: DownloadProgressBlock?,
-                              onCompletion completionBlock: @escaping DownloadCompletionBlock)
+    /// Re-attach callbacks to an in-flight download (e.g. after app foregrounds).
+    public func reattach(forKey key: String,
+                         onProgress progressBlock: DownloadProgressBlock?,
+                         onCompletion completionBlock: @escaping DownloadCompletionBlock)
     {
-        guard let key = key else { return }
-
         downloadQueue.async(flags: .barrier) {
-            if let download = self._ongoingDownloads[key] {
-                download.progressBlock = progressBlock
-                download.completionBlock = completionBlock
-                self._ongoingDownloads[key] = download
-            }
-        }
-    }
-
-    // MARK: - Private methods
-
-    override private init() {
-        super.init()
-        let sessionConfiguration = URLSessionConfiguration.default
-        session = URLSession(configuration: sessionConfiguration, delegate: self, delegateQueue: nil)
-        let backgroundConfiguration = URLSessionConfiguration.background(withIdentifier: Bundle.main.bundleIdentifier!)
-        backgroundSession = URLSession(configuration: backgroundConfiguration, delegate: self, delegateQueue: OperationQueue())
-    }
-
-    private func showLocalNotification(withText text: String) {
-        let notificationCenter = UNUserNotificationCenter.current()
-        notificationCenter.getNotificationSettings { settings in
-            guard settings.authorizationStatus == .authorized else {
-                print("Not authorized to schedule notification")
-                return
-            }
-
-            let content = UNMutableNotificationContent()
-            content.title = text
-            content.sound = UNNotificationSound.default
-            let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 0.1, repeats: false)
-            let identifier = "SDDownloadManagerNotification"
-            let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
-            notificationCenter.add(request) { error in
-                if let error = error {
-                    print("Could not schedule notification, error: \(error)")
-                }
+            if let obj = self._ongoingDownloads[key] {
+                obj.progressBlock   = progressBlock
+                obj.completionBlock = completionBlock
             }
         }
     }
 }
 
+// MARK: - URLSession delegates
+
 extension SDDownloadManager: URLSessionDelegate, URLSessionDownloadDelegate {
-    public func urlSession(_: URLSession,
-                           downloadTask: URLSessionDownloadTask,
-                           didFinishDownloadingTo location: URL)
-    {
-        guard let key = downloadTask.originalRequest?.url?.absoluteString,
-              let download = downloadQueue.sync(execute: { _ongoingDownloads[key] })
-        else {
-            return
-        }
 
-        if let response = downloadTask.response as? HTTPURLResponse {
-            let statusCode = response.statusCode
-
-            guard statusCode < 400 else {
-                let error = NSError(domain: "HttpError", code: statusCode, userInfo: [NSLocalizedDescriptionKey: HTTPURLResponse.localizedString(forStatusCode: statusCode)])
-                DispatchQueue.main.async {
-                    download.completionBlock(error, nil)
-                }
-                return
-            }
-
-            let fileName = download.fileName ?? response.suggestedFilename ?? downloadTask.originalRequest?.url?.lastPathComponent ?? "unknown"
-            let directoryName = download.directoryName
-
-            let fileMovingResult = SDFileUtils.moveFile(fromUrl: location, toDirectory: directoryName, withName: fileName)
-            let didSucceed = fileMovingResult.0
-            let error = fileMovingResult.1
-            let finalFileUrl = fileMovingResult.2
-
-            DispatchQueue.main.async {
-                didSucceed ? download.completionBlock(nil, finalFileUrl) : download.completionBlock(error, nil)
-            }
-        }
-
-        downloadQueue.async(flags: .barrier) {
-            self._ongoingDownloads.removeValue(forKey: key)
-        }
-    }
-
-    public func urlSession(_: URLSession,
+    public func urlSession(_ session: URLSession,
                            downloadTask: URLSessionDownloadTask,
                            didWriteData _: Int64,
                            totalBytesWritten: Int64,
                            totalBytesExpectedToWrite: Int64)
     {
-        guard totalBytesExpectedToWrite > 0 else {
-            print("Could not calculate progress as totalBytesExpectedToWrite is less than or equal to 0")
-            return
-        }
-
-        guard let key = downloadTask.originalRequest?.url?.absoluteString,
+        guard totalBytesExpectedToWrite > 0,
+              let key      = downloadTask.originalRequest?.url?.absoluteString,
               let download = downloadQueue.sync(execute: { _ongoingDownloads[key] }),
-              let progressBlock = download.progressBlock
-        else {
-            return
-        }
+              let progress = Optional(CGFloat(totalBytesWritten) / CGFloat(totalBytesExpectedToWrite))
+        else { return }
 
-        let progress = CGFloat(totalBytesWritten) / CGFloat(totalBytesExpectedToWrite)
-        DispatchQueue.main.async {
-            progressBlock(progress)
+        // Update Live Activity — didWriteData fires in a system-granted background
+        // execution context, so await activity.update() works correctly here.
+        LiveActivityBridge.shared.update(id: key,
+                                         progress: Double(progress),
+                                         downloaded: totalBytesWritten,
+                                         total: totalBytesExpectedToWrite)
+
+        if let block = download.progressBlock {
+            DispatchQueue.main.async {
+                block(progress, totalBytesWritten, totalBytesExpectedToWrite)
+            }
         }
     }
 
-    public func urlSession(_: URLSession,
+    public func urlSession(_ session: URLSession,
+                           downloadTask: URLSessionDownloadTask,
+                           didFinishDownloadingTo location: URL)
+    {
+        guard let key      = downloadTask.originalRequest?.url?.absoluteString,
+              let download = downloadQueue.sync(execute: { _ongoingDownloads[key] })
+        else { return }
+
+        if let response = downloadTask.response as? HTTPURLResponse, response.statusCode >= 400 {
+            let err = NSError(domain: "HttpError", code: response.statusCode,
+                              userInfo: [NSLocalizedDescriptionKey:
+                                HTTPURLResponse.localizedString(forStatusCode: response.statusCode)])
+            DispatchQueue.main.async { download.completionBlock(err, nil) }
+            LiveActivityBridge.shared.end(id: key, success: false)
+        } else {
+            let name = download.fileName
+                ?? downloadTask.response?.suggestedFilename
+                ?? downloadTask.originalRequest?.url?.lastPathComponent
+                ?? "download"
+
+            let result = SDFileUtils.moveFile(fromUrl: location,
+                                              toDirectory: download.directoryName,
+                                              withName: name)
+            DispatchQueue.main.async {
+                result.0
+                    ? download.completionBlock(nil, result.2)
+                    : download.completionBlock(result.1, nil)
+            }
+            LiveActivityBridge.shared.end(id: key, success: result.0)
+        }
+
+        downloadQueue.async(flags: .barrier) { self._ongoingDownloads.removeValue(forKey: key) }
+    }
+
+    public func urlSession(_ session: URLSession,
                            task: URLSessionTask,
                            didCompleteWithError error: Error?)
     {
         guard let error = error,
-              let downloadTask = task as? URLSessionDownloadTask,
-              let key = downloadTask.originalRequest?.url?.absoluteString,
-              let download = downloadQueue.sync(execute: { _ongoingDownloads[key] })
-        else {
-            return
+              let key    = task.originalRequest?.url?.absoluteString,
+              let dl     = downloadQueue.sync(execute: { _ongoingDownloads[key] })
+        else { return }
+
+        // Check for resume data in the error (user info)
+        if let resumeData = (error as NSError).userInfo[NSURLSessionDownloadTaskResumeData] as? Data {
+            UserDefaults.standard.set(resumeData, forKey: "resume_\(key)")
         }
 
-        DispatchQueue.main.async {
-            download.completionBlock(error, nil)
-        }
-
-        downloadQueue.async(flags: .barrier) {
-            self._ongoingDownloads.removeValue(forKey: key)
-        }
+        DispatchQueue.main.async { dl.completionBlock(error, nil) }
+        LiveActivityBridge.shared.end(id: key, success: false)
+        downloadQueue.async(flags: .barrier) { self._ongoingDownloads.removeValue(forKey: key) }
     }
 
     public func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
@@ -283,15 +262,28 @@ extension SDDownloadManager: URLSessionDelegate, URLSessionDownloadDelegate {
             if downloadTasks.isEmpty {
                 DispatchQueue.main.async {
                     self.backgroundCompletionHandler?()
-
                     if self.showLocalNotificationOnBackgroundDownloadDone {
-                        let notificationText = self.localNotificationText ?? "Download completed"
-                        self.showLocalNotification(withText: notificationText)
+                        self.showLocalNotification(
+                            withText: self.localNotificationText ?? "Downloads complete")
                     }
-
                     self.backgroundCompletionHandler = nil
                 }
             }
+        }
+    }
+
+    private func showLocalNotification(withText text: String) {
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            guard settings.authorizationStatus == .authorized else { return }
+            let content = UNMutableNotificationContent()
+            content.title = text
+            content.sound = .default
+            let req = UNNotificationRequest(
+                identifier: "SDDownload-\(UUID().uuidString)",
+                content: content,
+                trigger: UNTimeIntervalNotificationTrigger(timeInterval: 0.1, repeats: false)
+            )
+            UNUserNotificationCenter.current().add(req, withCompletionHandler: nil)
         }
     }
 }
