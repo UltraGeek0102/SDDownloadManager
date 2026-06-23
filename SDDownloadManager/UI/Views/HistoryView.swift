@@ -1,30 +1,30 @@
 import SwiftUI
 
 struct HistoryView: View {
-    @StateObject private var store = DownloadStore.shared
+    @EnvironmentObject var vm: DownloadsViewModel
+    @State private var showClearConfirm = false
 
     var body: some View {
-        NavigationStack {
+        NavigationView {
             Group {
-                if store.history.isEmpty {
-                    emptyState
+                if vm.historyItems.isEmpty {
+                    VStack(spacing: 16) {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .font(.system(size: 56))
+                            .foregroundColor(.secondary)
+                        Text("No completed downloads")
+                            .font(.headline).foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     List {
-                        ForEach(store.history) { item in
-                            HistoryRowView(item: item)
+                        ForEach(vm.historyItems) { record in
+                            HistoryRowView(record: record)
                                 .swipeActions(edge: .trailing) {
                                     Button(role: .destructive) {
-                                        store.deleteHistory(item: item)
+                                        vm.removeHistory(record: record)
                                     } label: {
                                         Label("Delete", systemImage: "trash")
-                                    }
-                                    if item.status == .failed {
-                                        Button {
-                                            store.retry(item: item)
-                                        } label: {
-                                            Label("Retry", systemImage: "arrow.clockwise")
-                                        }
-                                        .tint(.orange)
                                     }
                                 }
                         }
@@ -34,94 +34,80 @@ struct HistoryView: View {
             }
             .navigationTitle("History")
             .toolbar {
-                if !store.history.isEmpty {
-                    ToolbarItem(placement: .destructiveAction) {
-                        Button("Clear", role: .destructive) {
-                            store.clearHistory()
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    if !vm.historyItems.isEmpty {
+                        Button(role: .destructive) {
+                            showClearConfirm = true
+                        } label: {
+                            Text("Clear All")
                         }
                     }
                 }
             }
+            .confirmationDialog("Clear all history?", isPresented: $showClearConfirm,
+                                titleVisibility: .visible) {
+                Button("Clear All", role: .destructive) { vm.clearHistory() }
+                Button("Cancel", role: .cancel) {}
+            }
         }
-    }
-
-    private var emptyState: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "clock.arrow.circlepath")
-                .font(.system(size: 60))
-                .foregroundStyle(.tertiary)
-            Text("No Download History")
-                .font(.title2).bold()
-            Text("Completed and failed downloads appear here")
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-        }
-        .padding()
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
 struct HistoryRowView: View {
-    @ObservedObject var item: DownloadItem
+    let record: DownloadRecord
+    @State private var showShareSheet = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(item.filename)
-                    .font(.headline)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Image(systemName: record.status == .completed
+                      ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                    .foregroundColor(record.status == .completed ? .green : .red)
+                Text(record.filename)
+                    .font(.subheadline).fontWeight(.semibold)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                Spacer()
-                statusBadge
             }
 
-            if item.status == .done {
-                HStack {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
-                        .font(.caption)
-                    Text(item.localPath != nil ? "Saved to Files" : "Complete")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    if let date = item.savedAt {
-                        Text(date, style: .relative)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+            if record.status == .completed {
+                if record.totalBytes > 0 {
+                    Text(record.formattedSize)
+                        .font(.caption).foregroundColor(.secondary)
                 }
-            } else if item.status == .failed {
-                HStack {
-                    Image(systemName: "exclamationmark.circle.fill")
-                        .foregroundStyle(.red)
-                        .font(.caption)
-                    Text(item.errorMessage ?? "Download failed")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                Text(record.formattedDate)
+                    .font(.caption).foregroundColor(.secondary)
+
+                if let path = record.savedFilePath {
+                    Text(path)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
                         .lineLimit(1)
+                        .truncationMode(.head)
                 }
-            }
-
-            if item.totalBytes > 0 {
-                Text(ByteCountFormatter.string(fromByteCount: item.totalBytes, countStyle: .file))
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+            } else {
+                Text(record.errorMessage ?? "Failed")
+                    .font(.caption).foregroundColor(.red)
+                Text(record.formattedDate)
+                    .font(.caption).foregroundColor(.secondary)
             }
         }
         .padding(.vertical, 2)
-    }
-
-    private var statusBadge: some View {
-        HStack(spacing: 4) {
-            Image(systemName: item.status == .done ? "checkmark.circle.fill" : "xmark.circle.fill")
-                .font(.caption)
-            Text(item.status == .done ? "Done" : "Failed")
-                .font(.caption2).bold()
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if record.savedFilePath != nil { showShareSheet = true }
         }
-        .foregroundStyle(item.status == .done ? Color.green : Color.red)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3)
-        .background((item.status == .done ? Color.green : Color.red).opacity(0.12))
-        .clipShape(Capsule())
+        .sheet(isPresented: $showShareSheet) {
+            if let path = record.savedFilePath {
+                ShareSheet(url: URL(fileURLWithPath: path))
+            }
+        }
     }
+}
+
+struct ShareSheet: UIViewControllerRepresentable {
+    let url: URL
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: [url], applicationActivities: nil)
+    }
+    func updateUIViewController(_ vc: UIActivityViewController, context: Context) {}
 }
