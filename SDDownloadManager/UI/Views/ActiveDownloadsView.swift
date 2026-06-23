@@ -1,169 +1,143 @@
 import SwiftUI
 
 struct ActiveDownloadsView: View {
-    @ObservedObject var vm: DownloadsViewModel
+    @EnvironmentObject var vm: DownloadsViewModel
     @State private var showAddSheet = false
 
     var body: some View {
-        NavigationStack {
+        NavigationView {
             Group {
-                if vm.activeDownloads.isEmpty {
-                    emptyState
+                if vm.activeItems.isEmpty {
+                    VStack(spacing: 16) {
+                        Image(systemName: "arrow.down.circle.dotted")
+                            .font(.system(size: 56))
+                            .foregroundColor(.secondary)
+                        Text("No active downloads")
+                            .font(.headline)
+                            .foregroundColor(.secondary)
+                        Text("Tap + to add a URL")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    List(vm.activeDownloads) { record in
-                        DownloadRowView(record: record, vm: vm)
+                    List {
+                        ForEach(vm.activeItems) { item in
+                            DownloadRowView(item: item)
+                                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                    Button(role: .destructive) {
+                                        vm.cancel(item: item)
+                                    } label: {
+                                        Label("Remove", systemImage: "trash")
+                                    }
+                                }
+                                .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                                    if item.status == .downloading {
+                                        Button {
+                                            vm.pause(item: item)
+                                        } label: {
+                                            Label("Pause", systemImage: "pause.circle")
+                                        }
+                                        .tint(.orange)
+                                    } else if item.status == .paused || item.status == .failed {
+                                        Button {
+                                            vm.resume(item: item)
+                                        } label: {
+                                            Label("Resume", systemImage: "play.circle")
+                                        }
+                                        .tint(.green)
+                                    }
+                                }
+                        }
                     }
                     .listStyle(.insetGrouped)
                 }
             }
             .navigationTitle("Downloads")
             .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        showAddSheet = true
-                    } label: {
-                        Image(systemName: "plus.circle.fill")
-                            .font(.title3)
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button { showAddSheet = true } label: {
+                        Image(systemName: "plus")
                     }
                 }
             }
             .sheet(isPresented: $showAddSheet) {
-                AddDownloadView(vm: vm)
+                AddDownloadView(isPresented: $showAddSheet)
+                    .environmentObject(vm)
             }
         }
-    }
-
-    private var emptyState: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "arrow.down.circle")
-                .font(.system(size: 60))
-                .foregroundStyle(.tertiary)
-            Text("No Active Downloads")
-                .font(.title2).bold()
-            Text("Tap + to start a new download")
-                .foregroundStyle(.secondary)
-            Button {
-                showAddSheet = true
-            } label: {
-                Label("Add Download", systemImage: "plus")
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 10)
-            }
-            .buttonStyle(.borderedProminent)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
-// MARK: - Download row
+// MARK: - Download Row
 
 struct DownloadRowView: View {
-    let record: DownloadRecord
-    @ObservedObject var vm: DownloadsViewModel
+    let item: DownloadItem
+    // Timer to refresh progress display while downloading
+    @State private var tick = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(record.filename)
-                    .font(.headline)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(item.filename)
+                    .font(.subheadline).fontWeight(.semibold)
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Spacer()
                 statusBadge
             }
 
-            ProgressView(value: record.progress)
-                .tint(tintColor)
+            if item.status == .downloading || item.status == .paused {
+                ProgressView(value: item.progress)
+                    .tint(item.status == .paused ? .orange : .blue)
 
-            HStack {
-                Text(sizeText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                if !record.displaySpeed.isEmpty {
-                    Text(record.displaySpeed)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                }
-                Text(record.displayProgress)
-                    .font(.caption)
-                    .bold()
-                    .monospacedDigit()
-            }
-
-            // Action buttons
-            HStack(spacing: 12) {
-                Spacer()
-                if record.status == .downloading {
-                    Button {
-                        vm.pauseDownload(id: record.id)
-                    } label: {
-                        Label("Pause", systemImage: "pause.fill")
-                            .font(.caption)
-                    }
-                    .buttonStyle(.bordered)
-                    .tint(.orange)
-                } else if record.status == .paused {
-                    if record.canResume {
-                        Button {
-                            vm.resumeDownload(id: record.id)
-                        } label: {
-                            Label("Resume", systemImage: "play.fill")
-                                .font(.caption)
-                        }
-                        .buttonStyle(.bordered)
-                        .tint(.green)
+                HStack {
+                    Text(item.formattedSize)
+                        .font(.caption).foregroundColor(.secondary)
+                    Spacer()
+                    if item.status == .downloading && item.speedBytesPerSec > 0 {
+                        Text(item.formattedSpeed)
+                            .font(.caption).foregroundColor(.secondary)
+                            .monospacedDigit()
                     }
                 }
-                Button(role: .destructive) {
-                    vm.cancelDownload(id: record.id)
-                } label: {
-                    Label("Cancel", systemImage: "xmark")
-                        .font(.caption)
-                }
-                .buttonStyle(.bordered)
-                .tint(.red)
+            } else if item.status == .failed {
+                Text(item.errorMessage ?? "Unknown error")
+                    .font(.caption).foregroundColor(.red)
+                    .lineLimit(2)
+            } else if item.status == .completed {
+                Text(item.savedFilePath ?? "")
+                    .font(.caption).foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.head)
             }
         }
         .padding(.vertical, 4)
+        .onReceive(
+            Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+        ) { _ in
+            if item.status == .downloading { tick.toggle() }
+        }
     }
 
+    @ViewBuilder
     private var statusBadge: some View {
-        Text(record.status.rawValue.capitalized)
-            .font(.caption2)
-            .bold()
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(badgeColor.opacity(0.15))
-            .foregroundStyle(badgeColor)
-            .clipShape(Capsule())
-    }
-
-    private var badgeColor: Color {
-        switch record.status {
-        case .downloading: return .blue
-        case .paused:      return .orange
-        case .completed:   return .green
-        case .failed:      return .red
+        switch item.status {
+        case .downloading:
+            Label(item.formattedProgress, systemImage: "arrow.down.circle.fill")
+                .font(.caption).foregroundColor(.blue)
+        case .paused:
+            Label("Paused", systemImage: "pause.circle.fill")
+                .font(.caption).foregroundColor(.orange)
+        case .failed:
+            Label("Failed", systemImage: "exclamationmark.circle.fill")
+                .font(.caption).foregroundColor(.red)
+        case .queued:
+            Label("Queued", systemImage: "clock.fill")
+                .font(.caption).foregroundColor(.secondary)
+        case .completed:
+            Label("Done", systemImage: "checkmark.circle.fill")
+                .font(.caption).foregroundColor(.green)
         }
-    }
-
-    private var tintColor: Color {
-        switch record.status {
-        case .downloading: return .blue
-        case .paused:      return .orange
-        case .failed:      return .red
-        case .completed:   return .green
-        }
-    }
-
-    private var sizeText: String {
-        if record.totalBytes > 0 {
-            let dl    = ByteCountFormatter.string(fromByteCount: record.downloadedBytes, countStyle: .file)
-            let total = ByteCountFormatter.string(fromByteCount: record.totalBytes, countStyle: .file)
-            return "\(dl) / \(total)"
-        }
-        return ByteCountFormatter.string(fromByteCount: record.downloadedBytes, countStyle: .file)
     }
 }
