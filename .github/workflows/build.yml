@@ -1,0 +1,85 @@
+name: Build IPA
+
+on:
+  push:
+    branches: [master, main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode_16.2.app/Contents/Developer 2>/dev/null || \
+          sudo xcode-select -s $(ls -d /Applications/Xcode*.app | sort -V | tail -1)/Contents/Developer
+          xcodebuild -version
+
+      - name: Build (no codesign)
+        run: |
+          xcodebuild \
+            -project SDDownloadManager.xcodeproj \
+            -scheme SDDownloadManager \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination "generic/platform=iOS" \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            DEVELOPMENT_TEAM="" \
+            clean build \
+            OBJROOT=/tmp/build/obj \
+            SYMROOT=/tmp/build/sym \
+            | xcpretty || true
+          
+          # Find the built .app
+          APP_PATH=$(find /tmp/build/sym -name "*.app" -not -path "*.appex*" | head -1)
+          echo "APP_PATH=$APP_PATH" >> $GITHUB_ENV
+          echo "Found app: $APP_PATH"
+
+      - name: Package IPA
+        run: |
+          mkdir -p Payload
+          cp -r "$APP_PATH" Payload/
+          zip -r -y DownloadManager.ipa Payload/
+          echo "IPA size: $(du -sh DownloadManager.ipa | cut -f1)"
+
+      - name: Fix widget appex bundle version
+        run: |
+          APPEX=$(find Payload -name "*.appex" | head -1)
+          if [ -n "$APPEX" ]; then
+            PLIST="$APPEX/Info.plist"
+            if [ -f "$PLIST" ]; then
+              /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString 1.0" "$PLIST" 2>/dev/null || true
+              /usr/libexec/PlistBuddy -c "Set :CFBundleVersion 1" "$PLIST" 2>/dev/null || true
+              # Replace any unexpanded variables
+              /usr/bin/plutil -convert xml1 "$PLIST"
+              sed -i '' \
+                's|$(EXECUTABLE_NAME)|DownloadWidget|g;
+                 s|$(PRODUCT_BUNDLE_IDENTIFIER)|com.ultrageek.downloadmanager.widget|g;
+                 s|$(PRODUCT_NAME)|DownloadWidget|g' \
+                "$PLIST"
+              echo "Widget plist patched"
+            fi
+          fi
+          # Repack
+          rm -f DownloadManager.ipa
+          zip -r -y DownloadManager.ipa Payload/
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: DownloadManager-ipa
+          path: DownloadManager.ipa
+          retention-days: 14
+
+      - name: Summary
+        run: |
+          echo "## ✅ Build Complete" >> $GITHUB_STEP_SUMMARY
+          echo "IPA size: $(du -sh DownloadManager.ipa | cut -f1)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Download from the Artifacts section above and sideload with Feather." >> $GITHUB_STEP_SUMMARY
