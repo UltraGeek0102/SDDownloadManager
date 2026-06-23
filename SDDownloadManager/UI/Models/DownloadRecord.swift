@@ -1,36 +1,37 @@
 import Foundation
 
-enum DownloadStatus: String, Codable {
-    case downloading, paused, completed, failed
-}
-
+/// Immutable record of a completed or failed download, stored in history.
 struct DownloadRecord: Identifiable, Codable {
-    let id: String           // URL string — unique key used throughout
-    var filename: String
-    var url: String
-    var status: DownloadStatus
-    var progress: Double     // 0.0 – 1.0
-    var downloadedBytes: Int64
-    var totalBytes: Int64
-    var speedBytesPerSec: Int64
-    var startedAt: Date
-    var completedAt: Date?
-    var localPath: String?   // absolute path after completion
+    let id: String
+    let url: String
+    let filename: String
+    let status: DownloadStatus
+    let savedFilePath: String?
+    let errorMessage: String?
+    let totalBytes: Int64
+    let completedAt: Date
+    let createdAt: Date
 
-    var displaySize: String {
-        totalBytes > 0 ? ByteCountFormatter.string(fromByteCount: totalBytes, countStyle: .file) : "Unknown size"
+    init(from item: DownloadItem) {
+        self.id            = item.id
+        self.url           = item.url
+        self.filename      = item.filename
+        self.status        = item.status
+        self.savedFilePath = item.savedFilePath
+        self.errorMessage  = item.errorMessage
+        self.totalBytes    = item.totalBytes
+        self.completedAt   = item.completedAt ?? Date()
+        self.createdAt     = item.createdAt
     }
 
-    var displaySpeed: String {
-        guard speedBytesPerSec > 0 else { return "" }
-        return ByteCountFormatter.string(fromByteCount: speedBytesPerSec, countStyle: .file) + "/s"
+    var formattedSize: String {
+        ByteCountFormatter.string(fromByteCount: totalBytes, countStyle: .file)
     }
 
-    var displayProgress: String {
-        String(format: "%.1f%%", progress * 100)
-    }
-
-    var canResume: Bool {
-        status == .paused && UserDefaults.standard.data(forKey: "resume_\(id)") != nil
+    var formattedDate: String {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .short
+        return f.string(from: completedAt)
     }
 }
