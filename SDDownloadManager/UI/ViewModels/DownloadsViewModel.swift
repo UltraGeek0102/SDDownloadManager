@@ -46,27 +46,37 @@ class DownloadsViewModel: ObservableObject {
 
     func startDownload(urlString: String, filename: String?) {
         SDDownloadManager.shared.downloadFile(
-            urlString: urlString,
-            filename: filename?.isEmpty == true ? nil : filename,
-            inDirectory: "Downloads"
-        ) { [weak self] _, _ in
-            DispatchQueue.main.async { self?.reload() }
-        }
+            withRequest: request,
+            inDirectory: nil,
+            withName: nil,
+            shouldDownloadInBackground: true,
+            onProgress: { progress, downloaded, total in
+        
+            },
+            onCompletion: { error, fileURL in
+        
+            }
+        )
         reload()
     }
 
     func pause(item: DownloadItem) {
-        SDDownloadManager.shared.pause(id: item.id)
+        SDDownloadManager.shared.pauseDownload(forKey: item.id)
     }
 
     func resume(item: DownloadItem) {
-        SDDownloadManager.shared.resume(id: item.id) { [weak self] _, _ in
+        SDDownloadManager.shared.resumeDownload(
+            withKey: item.id,
+            onProgress: { _,_,_ in },
+            onCompletion: { _,_ in }
+        )
+        { [weak self] _, _ in
             DispatchQueue.main.async { self?.reload() }
         }
     }
 
     func cancel(item: DownloadItem) {
-        SDDownloadManager.shared.cancel(id: item.id)
+        SDDownloadManager.shared.cancelDownload(forKey: item.id)
         reload()
     }
 
