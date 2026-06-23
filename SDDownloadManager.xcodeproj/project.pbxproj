@@ -82,9 +82,9 @@
 		FA11 /* LiveActivityManager.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = LiveActivityManager.swift; path = LiveActivity/LiveActivityManager.swift; sourceTree = "<group>"; };
 		FA12 /* DownloadWidget.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = DownloadWidget.swift; sourceTree = "<group>"; };
 		FA13 /* DownloadWidgetBundle.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = DownloadWidgetBundle.swift; sourceTree = "<group>"; };
-		FA14 /* DownloadActivityAttributes (widget).swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = "DownloadActivityAttributes (widget).swift"; path = "Widgets/DownloadActivityAttributes.swift"; sourceTree = "<group>"; };
+		FA14 /* DownloadActivityAttributes (widget).swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = "DownloadActivityAttributes (widget).swift"; path = DownloadActivityAttributes.swift; sourceTree = "<group>"; };
 		WW01 /* DownloadWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = DownloadWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		WW05 /* DownloadWidget-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "DownloadWidget-Info.plist"; path = "Widgets/DownloadWidget-Info.plist"; sourceTree = "<group>"; };
+		WW05 /* DownloadWidget-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "DownloadWidget-Info.plist"; path = DownloadWidget-Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
