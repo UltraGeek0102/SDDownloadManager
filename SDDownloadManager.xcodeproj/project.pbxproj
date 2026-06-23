@@ -179,7 +179,7 @@
 				FA04 /* AddDownloadView.swift */,
 				FA05 /* HistoryView.swift */,
 			);
-			path = Views;
+			path = "";
 			sourceTree = "<group>";
 		};
 		FA23 /* ViewModels */ = {
@@ -188,7 +188,7 @@
 				FA06 /* DownloadsViewModel.swift */,
 				FA07 /* DownloadStore.swift */,
 			);
-			path = ViewModels;
+			path = "";
 			sourceTree = "<group>";
 		};
 		FA24 /* Models */ = {
@@ -197,7 +197,7 @@
 				FA08 /* DownloadRecord.swift */,
 				FA09 /* DownloadItem.swift */,
 			);
-			path = Models;
+			path = "";
 			sourceTree = "<group>";
 		};
 		WW07 /* DownloadWidget */ = {
