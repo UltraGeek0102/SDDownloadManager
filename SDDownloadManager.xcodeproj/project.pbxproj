@@ -78,13 +78,13 @@
 		FA07 /* DownloadStore.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = UI/ViewModels/DownloadStore.swift; sourceTree = "<group>"; };
 		FA08 /* DownloadRecord.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = UI/Models/DownloadRecord.swift; sourceTree = "<group>"; };
 		FA09 /* DownloadItem.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = UI/Models/DownloadItem.swift; sourceTree = "<group>"; };
-		FA10 /* DownloadActivityAttributes.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = DownloadActivityAttributes.swift; path = DownloadActivityAttributes.swift; sourceTree = "<group>"; };
-		FA11 /* LiveActivityManager.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = LiveActivityManager.swift; path = LiveActivityManager.swift; sourceTree = "<group>"; };
-		FA12 /* DownloadWidget.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = DownloadWidget.swift; sourceTree = "<group>"; };
-		FA13 /* DownloadWidgetBundle.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = DownloadWidgetBundle.swift; sourceTree = "<group>"; };
-		FA14 /* DownloadActivityAttributes (widget).swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = "DownloadActivityAttributes (widget).swift"; path = DownloadActivityAttributes.swift; sourceTree = "<group>"; };
+		FA10 /* DownloadActivityAttributes.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = DownloadActivityAttributes.swift; path = LiveActivity/DownloadActivityAttributes.swift; sourceTree = "<group>"; };
+		FA11 /* LiveActivityManager.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = LiveActivityManager.swift; path = LiveActivity/LiveActivityManager.swift; sourceTree = "<group>"; };
+		FA12 /* DownloadWidget.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Widgets/DownloadWidget.swift; sourceTree = "<group>"; };
+		FA13 /* DownloadWidgetBundle.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Widgets/DownloadWidgetBundle.swift; sourceTree = "<group>"; };
+		FA14 /* DownloadActivityAttributes (widget).swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = "DownloadActivityAttributes (widget).swift"; path = Widgets/DownloadActivityAttributes.swift; sourceTree = "<group>"; };
 		WW01 /* DownloadWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = DownloadWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		WW05 /* DownloadWidget-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "DownloadWidget-Info.plist"; path = DownloadWidget-Info.plist; sourceTree = "<group>"; };
+		WW05 /* DownloadWidget-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "DownloadWidget-Info.plist"; path = Widgets/DownloadWidget-Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -158,7 +158,7 @@
 				FA11 /* LiveActivityManager.swift */,
 			);
 			name = LiveActivity;
-			path = LiveActivity;
+			path = "";
 			sourceTree = "<group>";
 		};
 		FA21 /* UI */ = {
@@ -209,7 +209,7 @@
 				WW05 /* DownloadWidget-Info.plist */,
 			);
 			name = DownloadWidget;
-			path = SDDownloadManager/Widgets;
+			path = "";
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
