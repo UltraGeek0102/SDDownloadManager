@@ -1,65 +1,76 @@
 import SwiftUI
 
 struct AddDownloadView: View {
-    @ObservedObject var vm: DownloadsViewModel
-    @Environment(\.dismiss) private var dismiss
+    @Binding var isPresented: Bool
+    @EnvironmentObject var vm: DownloadsViewModel
 
-    @State private var urlText      = ""
-    @State private var customName   = ""
-    @State private var showError    = false
-    @State private var errorMessage = ""
+    @State private var urlString = ""
+    @State private var filename  = ""
+    @State private var showError = false
+    @State private var errorMsg  = ""
 
     var body: some View {
-        NavigationStack {
+        NavigationView {
             Form {
-                Section("Download URL") {
-                    TextField("https://example.com/file.zip", text: $urlText)
+                Section {
+                    TextField("https://example.com/file.zip", text: $urlString)
                         .keyboardType(.URL)
+                        .autocapitalization(.none)
                         .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                }
-
-                Section("File Name (optional)") {
-                    TextField("Leave blank to use URL filename", text: $customName)
-                        .autocorrectionDisabled()
+                } header: {
+                    Text("URL")
+                } footer: {
+                    Text("Paste a direct download link")
                 }
 
                 Section {
-                    Button(action: startDownload) {
+                    TextField("Optional — uses URL filename by default", text: $filename)
+                        .autocapitalization(.none)
+                        .autocorrectionDisabled()
+                } header: {
+                    Text("Filename (optional)")
+                }
+
+                Section {
+                    Button {
+                        startDownload()
+                    } label: {
                         HStack {
                             Spacer()
                             Label("Start Download", systemImage: "arrow.down.circle.fill")
-                                .font(.headline)
+                                .fontWeight(.semibold)
                             Spacer()
                         }
                     }
-                    .foregroundStyle(.white)
-                    .listRowBackground(Color.blue)
+                    .disabled(urlString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
-            .navigationTitle("New Download")
+            .navigationTitle("Add Download")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button("Cancel") { isPresented = false }
                 }
             }
             .alert("Invalid URL", isPresented: $showError) {
                 Button("OK", role: .cancel) {}
             } message: {
-                Text(errorMessage)
+                Text(errorMsg)
             }
         }
     }
 
     private func startDownload() {
-        let success = vm.addDownload(urlString: urlText,
-                                     customName: customName.isEmpty ? nil : customName)
-        if success {
-            dismiss()
-        } else {
-            errorMessage = "Please enter a valid HTTP or HTTPS URL."
+        let url = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !url.isEmpty, URL(string: url) != nil else {
+            errorMsg  = "Please enter a valid URL starting with https://"
             showError = true
+            return
         }
+        vm.startDownload(
+            urlString: url,
+            filename: filename.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+        isPresented = false
     }
 }
