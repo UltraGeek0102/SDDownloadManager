@@ -86,7 +86,10 @@ public final class SDDownloadManager: NSObject {
         downloadQueue.async(flags: .barrier) { self._ongoingDownloads[key] = obj }
 
         // Start Live Activity
-        let name = fileName ?? url.lastPathComponent.isEmpty ? url.host ?? "Download" : url.lastPathComponent
+        let name = fileName ??
+            (url.lastPathComponent.isEmpty
+                ? (url.host ?? "Download")
+                : url.lastPathComponent)
         LiveActivityBridge.shared.start(id: key, filename: name)
 
         task.resume()
