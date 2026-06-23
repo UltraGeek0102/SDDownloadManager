@@ -16,7 +16,46 @@
 		ACE3B69B1F35D62E00684BE6 /* SDDownloadObject.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACE3B6981F35D62E00684BE6 /* SDDownloadObject.swift */; };
 		ACE3B69C1F35D62E00684BE6 /* SDFileUtils.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACE3B6991F35D62E00684BE6 /* SDFileUtils.swift */; };
 		ACE3B6A01F36017E00684BE6 /* sddwn.png in Resources */ = {isa = PBXBuildFile; fileRef = ACE3B69F1F36017E00684BE6 /* sddwn.png */; };
+		BB01 /* DownloadManagerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA01 /* DownloadManagerApp.swift */; };
+		BB02 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA02 /* ContentView.swift */; };
+		BB03 /* ActiveDownloadsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA03 /* ActiveDownloadsView.swift */; };
+		BB04 /* AddDownloadView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA04 /* AddDownloadView.swift */; };
+		BB05 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA05 /* HistoryView.swift */; };
+		BB06 /* DownloadsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA06 /* DownloadsViewModel.swift */; };
+		BB07 /* DownloadStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA07 /* DownloadStore.swift */; };
+		BB08 /* DownloadRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA08 /* DownloadRecord.swift */; };
+		BB09 /* DownloadItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA09 /* DownloadItem.swift */; };
+		BB10 /* DownloadActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA10 /* DownloadActivityAttributes.swift */; };
+		BB11 /* LiveActivityManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA11 /* LiveActivityManager.swift */; };
+		BB12 /* DownloadWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA12 /* DownloadWidget.swift */; };
+		BB13 /* DownloadWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA13 /* DownloadWidgetBundle.swift */; };
+		BB14 /* DownloadActivityAttributes.swift (widget) in Sources */ = {isa = PBXBuildFile; fileRef = FA14 /* DownloadActivityAttributes (widget).swift */; };
+		BB15 /* DownloadWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = WW01 /* DownloadWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		WW02 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = ACE3B6791F35D5BA00684BE6 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = WW03;
+			remoteInfo = DownloadWidget;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		WW04 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				BB15 /* DownloadWidget.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		ACE3B6811F35D5BA00684BE6 /* SDDownloadManager.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SDDownloadManager.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -30,10 +69,33 @@
 		ACE3B6981F35D62E00684BE6 /* SDDownloadObject.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SDDownloadObject.swift; sourceTree = "<group>"; };
 		ACE3B6991F35D62E00684BE6 /* SDFileUtils.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SDFileUtils.swift; sourceTree = "<group>"; };
 		ACE3B69F1F36017E00684BE6 /* sddwn.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = sddwn.png; sourceTree = "<group>"; };
+		FA01 /* DownloadManagerApp.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = DownloadManagerApp.swift; sourceTree = "<group>"; };
+		FA02 /* ContentView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		FA03 /* ActiveDownloadsView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ActiveDownloadsView.swift; sourceTree = "<group>"; };
+		FA04 /* AddDownloadView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AddDownloadView.swift; sourceTree = "<group>"; };
+		FA05 /* HistoryView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
+		FA06 /* DownloadsViewModel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = DownloadsViewModel.swift; sourceTree = "<group>"; };
+		FA07 /* DownloadStore.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = DownloadStore.swift; sourceTree = "<group>"; };
+		FA08 /* DownloadRecord.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = DownloadRecord.swift; sourceTree = "<group>"; };
+		FA09 /* DownloadItem.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = DownloadItem.swift; sourceTree = "<group>"; };
+		FA10 /* DownloadActivityAttributes.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = DownloadActivityAttributes.swift; path = LiveActivity/DownloadActivityAttributes.swift; sourceTree = "<group>"; };
+		FA11 /* LiveActivityManager.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = LiveActivityManager.swift; path = LiveActivity/LiveActivityManager.swift; sourceTree = "<group>"; };
+		FA12 /* DownloadWidget.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = DownloadWidget.swift; sourceTree = "<group>"; };
+		FA13 /* DownloadWidgetBundle.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = DownloadWidgetBundle.swift; sourceTree = "<group>"; };
+		FA14 /* DownloadActivityAttributes (widget).swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = "DownloadActivityAttributes (widget).swift"; path = "Widgets/DownloadActivityAttributes.swift"; sourceTree = "<group>"; };
+		WW01 /* DownloadWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = DownloadWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		WW05 /* DownloadWidget-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "DownloadWidget-Info.plist"; path = "Widgets/DownloadWidget-Info.plist"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		ACE3B67E1F35D5BA00684BE6 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		WW06 /* Frameworks (widget) */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -47,6 +109,7 @@
 			isa = PBXGroup;
 			children = (
 				ACE3B6831F35D5BA00684BE6 /* SDDownloadManager */,
+				WW07 /* DownloadWidget */,
 				ACE3B6821F35D5BA00684BE6 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -55,6 +118,7 @@
 			isa = PBXGroup;
 			children = (
 				ACE3B6811F35D5BA00684BE6 /* SDDownloadManager.app */,
+				WW01 /* DownloadWidget.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -63,7 +127,10 @@
 			isa = PBXGroup;
 			children = (
 				ACE3B6961F35D5E500684BE6 /* Classes */,
+				FA20 /* LiveActivity */,
+				FA21 /* UI */,
 				ACE3B6841F35D5BA00684BE6 /* AppDelegate.swift */,
+				FA01 /* DownloadManagerApp.swift */,
 				ACE3B6861F35D5BA00684BE6 /* ViewController.swift */,
 				ACE3B69F1F36017E00684BE6 /* sddwn.png */,
 				ACE3B6881F35D5BA00684BE6 /* Main.storyboard */,
@@ -84,6 +151,67 @@
 			path = Classes;
 			sourceTree = "<group>";
 		};
+		FA20 /* LiveActivity */ = {
+			isa = PBXGroup;
+			children = (
+				FA10 /* DownloadActivityAttributes.swift */,
+				FA11 /* LiveActivityManager.swift */,
+			);
+			name = LiveActivity;
+			path = LiveActivity;
+			sourceTree = "<group>";
+		};
+		FA21 /* UI */ = {
+			isa = PBXGroup;
+			children = (
+				FA22 /* Views */,
+				FA23 /* ViewModels */,
+				FA24 /* Models */,
+			);
+			name = UI;
+			sourceTree = "<group>";
+		};
+		FA22 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				FA02 /* ContentView.swift */,
+				FA03 /* ActiveDownloadsView.swift */,
+				FA04 /* AddDownloadView.swift */,
+				FA05 /* HistoryView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		FA23 /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				FA06 /* DownloadsViewModel.swift */,
+				FA07 /* DownloadStore.swift */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		FA24 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				FA08 /* DownloadRecord.swift */,
+				FA09 /* DownloadItem.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		WW07 /* DownloadWidget */ = {
+			isa = PBXGroup;
+			children = (
+				FA12 /* DownloadWidget.swift */,
+				FA13 /* DownloadWidgetBundle.swift */,
+				FA14 /* DownloadActivityAttributes (widget).swift */,
+				WW05 /* DownloadWidget-Info.plist */,
+			);
+			name = DownloadWidget;
+			path = SDDownloadManager/Widgets;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -94,15 +222,34 @@
 				ACE3B67D1F35D5BA00684BE6 /* Sources */,
 				ACE3B67E1F35D5BA00684BE6 /* Frameworks */,
 				ACE3B67F1F35D5BA00684BE6 /* Resources */,
+				WW04 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				WW08 /* PBXTargetDependency */,
 			);
 			name = SDDownloadManager;
 			productName = SDDownloadManager;
 			productReference = ACE3B6811F35D5BA00684BE6 /* SDDownloadManager.app */;
 			productType = "com.apple.product-type.application";
+		};
+		WW03 /* DownloadWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = WW09 /* Build configuration list for PBXNativeTarget "DownloadWidget" */;
+			buildPhases = (
+				WW10 /* Sources */,
+				WW06 /* Frameworks */,
+				WW11 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = DownloadWidget;
+			productName = DownloadWidget;
+			productReference = WW01 /* DownloadWidget.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -117,14 +264,19 @@
 				TargetAttributes = {
 					ACE3B6801F35D5BA00684BE6 = {
 						CreatedOnToolsVersion = 8.3.3;
-						DevelopmentTeam = X9D22TEB85;
+						DevelopmentTeam = JH48DS925K;
 						LastSwiftMigration = 1020;
 						ProvisioningStyle = Automatic;
 						SystemCapabilities = {
 							com.apple.BackgroundModes = {
-								enabled = 0;
+								enabled = 1;
 							};
 						};
+					};
+					WW03 = {
+						CreatedOnToolsVersion = 15.0;
+						DevelopmentTeam = JH48DS925K;
+						ProvisioningStyle = Automatic;
 					};
 				};
 			};
@@ -142,6 +294,7 @@
 			projectRoot = "";
 			targets = (
 				ACE3B6801F35D5BA00684BE6 /* SDDownloadManager */,
+				WW03 /* DownloadWidget */,
 			);
 		};
 /* End PBXProject section */
@@ -158,6 +311,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		WW11 /* Resources (widget) */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -170,10 +330,39 @@
 				ACE3B6851F35D5BA00684BE6 /* AppDelegate.swift in Sources */,
 				ACE3B69A1F35D62E00684BE6 /* SDDownloadManager.swift in Sources */,
 				ACE3B69B1F35D62E00684BE6 /* SDDownloadObject.swift in Sources */,
+				BB01 /* DownloadManagerApp.swift in Sources */,
+				BB02 /* ContentView.swift in Sources */,
+				BB03 /* ActiveDownloadsView.swift in Sources */,
+				BB04 /* AddDownloadView.swift in Sources */,
+				BB05 /* HistoryView.swift in Sources */,
+				BB06 /* DownloadsViewModel.swift in Sources */,
+				BB07 /* DownloadStore.swift in Sources */,
+				BB08 /* DownloadRecord.swift in Sources */,
+				BB09 /* DownloadItem.swift in Sources */,
+				BB10 /* DownloadActivityAttributes.swift in Sources */,
+				BB11 /* LiveActivityManager.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		WW10 /* Sources (widget) */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BB12 /* DownloadWidget.swift in Sources */,
+				BB13 /* DownloadWidgetBundle.swift in Sources */,
+				BB14 /* DownloadActivityAttributes.swift (widget) in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		WW08 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = WW03 /* DownloadWidget */;
+			targetProxy = WW02 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin PBXVariantGroup section */
 		ACE3B6881F35D5BA00684BE6 /* Main.storyboard */ = {
@@ -199,60 +388,15 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
-				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
-				CLANG_ANALYZER_NONNULL = YES;
-				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
-				CLANG_CXX_LANGUAGE_STANDARD = "gnu++0x";
-				CLANG_CXX_LIBRARY = "libc++";
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_ENABLE_OBJC_ARC = YES;
-				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
-				CLANG_WARN_BOOL_CONVERSION = YES;
-				CLANG_WARN_COMMA = YES;
-				CLANG_WARN_CONSTANT_CONVERSION = YES;
-				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
-				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
-				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
-				CLANG_WARN_EMPTY_BODY = YES;
-				CLANG_WARN_ENUM_CONVERSION = YES;
-				CLANG_WARN_INFINITE_RECURSION = YES;
-				CLANG_WARN_INT_CONVERSION = YES;
-				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
-				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
-				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
-				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
-				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
-				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
-				CLANG_WARN_STRICT_PROTOTYPES = YES;
-				CLANG_WARN_SUSPICIOUS_MOVE = YES;
-				CLANG_WARN_UNREACHABLE_CODE = YES;
-				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
-				COPY_PHASE_STRIP = NO;
-				DEBUG_INFORMATION_FORMAT = dwarf;
-				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				ENABLE_TESTABILITY = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu99;
-				GCC_DYNAMIC_NO_PIC = NO;
-				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_OPTIMIZATION_LEVEL = 0;
-				GCC_PREPROCESSOR_DEFINITIONS = (
-					"DEBUG=1",
-					"$(inherited)",
-				);
-				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
-				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
-				GCC_WARN_UNDECLARED_SELECTOR = YES;
-				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
-				GCC_WARN_UNUSED_FUNCTION = YES;
-				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
-				MTL_ENABLE_DEBUG_INFO = YES;
-				ONLY_ACTIVE_ARCH = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
 				SDKROOT = iphoneos;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
 			};
 			name = Debug;
 		};
@@ -260,53 +404,14 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
-				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
-				CLANG_ANALYZER_NONNULL = YES;
-				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
-				CLANG_CXX_LANGUAGE_STANDARD = "gnu++0x";
-				CLANG_CXX_LIBRARY = "libc++";
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_ENABLE_OBJC_ARC = YES;
-				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
-				CLANG_WARN_BOOL_CONVERSION = YES;
-				CLANG_WARN_COMMA = YES;
-				CLANG_WARN_CONSTANT_CONVERSION = YES;
-				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
-				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
-				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
-				CLANG_WARN_EMPTY_BODY = YES;
-				CLANG_WARN_ENUM_CONVERSION = YES;
-				CLANG_WARN_INFINITE_RECURSION = YES;
-				CLANG_WARN_INT_CONVERSION = YES;
-				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
-				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
-				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
-				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
-				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
-				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
-				CLANG_WARN_STRICT_PROTOTYPES = YES;
-				CLANG_WARN_SUSPICIOUS_MOVE = YES;
-				CLANG_WARN_UNREACHABLE_CODE = YES;
-				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
-				COPY_PHASE_STRIP = NO;
-				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				ENABLE_NS_ASSERTIONS = NO;
-				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu99;
-				GCC_NO_COMMON_BLOCKS = YES;
-				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
-				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
-				GCC_WARN_UNDECLARED_SELECTOR = YES;
-				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
-				GCC_WARN_UNUSED_FUNCTION = YES;
-				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
-				MTL_ENABLE_DEBUG_INFO = NO;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
 				SDKROOT = iphoneos;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
 				VALIDATE_PRODUCT = YES;
 			};
 			name = Release;
@@ -315,14 +420,15 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				DEVELOPMENT_TEAM = X9D22TEB85;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = JH48DS925K;
 				INFOPLIST_FILE = SDDownloadManager/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.sagar.thinkinfinite.SDDownloadManager;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ultrageek.downloadmanager;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
 			};
@@ -332,16 +438,57 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				DEVELOPMENT_TEAM = X9D22TEB85;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = JH48DS925K;
 				INFOPLIST_FILE = SDDownloadManager/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.sagar.thinkinfinite.SDDownloadManager;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ultrageek.downloadmanager;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		WW12 /* Debug (widget) */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = JH48DS925K;
+				INFOPLIST_FILE = SDDownloadManager/Widgets/DownloadWidget-Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.ultrageek.downloadmanager.widget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		WW13 /* Release (widget) */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = JH48DS925K;
+				INFOPLIST_FILE = SDDownloadManager/Widgets/DownloadWidget-Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.ultrageek.downloadmanager.widget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
 		};
@@ -362,6 +509,15 @@
 			buildConfigurations = (
 				ACE3B6941F35D5BA00684BE6 /* Debug */,
 				ACE3B6951F35D5BA00684BE6 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		WW09 /* Build configuration list for PBXNativeTarget "DownloadWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				WW12 /* Debug (widget) */,
+				WW13 /* Release (widget) */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
