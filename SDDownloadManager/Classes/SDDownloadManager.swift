@@ -221,8 +221,7 @@ extension SDDownloadManager: URLSessionDelegate, URLSessionDownloadDelegate {
         LiveActivityBridge.shared.update(id: key,
                                          progress: Double(progress),
                                          downloaded: totalBytesWritten,
-                                         total: totalBytesExpectedToWrite,
-                                         speed: speed)
+                                         total: totalBytesExpectedToWrite)
 
         if let block = download.progressBlock {
             DispatchQueue.main.async {
