@@ -214,7 +214,7 @@ extension SDDownloadManager: URLSessionDelegate, URLSessionDownloadDelegate {
         let progress = totalBytesExpectedToWrite > 0
             ? CGFloat(totalBytesWritten) / CGFloat(totalBytesExpectedToWrite)
             : 0
-        let speed = calculateSpeed(key: key, totalBytesWritten: totalBytesWritten)
+        let _ = calculateSpeed(key: key, totalBytesWritten: totalBytesWritten)
 
         // Update Live Activity directly from URLSession delegate —
         // this IS a system-granted execution context where await works.
