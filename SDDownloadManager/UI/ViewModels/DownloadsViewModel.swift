@@ -1,8 +1,5 @@
 import Foundation
 
-/// Primary ViewModel — injected as @EnvironmentObject into all views.
-/// Owns active downloads ([DownloadItem]) and history ([DownloadRecord]).
-/// Bridges to SDDownloadManager for network operations and DownloadStore for persistence.
 final class DownloadsViewModel: ObservableObject {
 
     static let shared = DownloadsViewModel()
@@ -41,11 +38,14 @@ final class DownloadsViewModel: ObservableObject {
             withName: name,
             shouldDownloadInBackground: true,
             onProgress: { [weak item] progress, downloaded, total in
+                // All mutations on main thread — DownloadItem is ObservableObject
                 DispatchQueue.main.async {
                     item?.status          = .downloading
                     item?.progress        = Double(progress)
                     item?.bytesDownloaded = downloaded
                     item?.totalBytes      = total
+                    // Speed is computed inside SDDownloadManager but not passed here.
+                    // We calculate it from successive progress calls instead.
                 }
             },
             onCompletion: { [weak self, weak item] error, fileURL in
@@ -55,9 +55,10 @@ final class DownloadsViewModel: ObservableObject {
                         item.status       = .failed
                         item.errorMessage = error.localizedDescription
                     } else {
-                        item.status      = .completed
-                        item.progress    = 1.0
-                        item.completedAt = Date()
+                        item.status        = .completed
+                        item.progress      = 1.0
+                        item.speedBytesPerSec = 0
+                        item.completedAt   = Date()
                         item.savedFilePath = fileURL?.path
                     }
                     self.store.save()
@@ -70,15 +71,18 @@ final class DownloadsViewModel: ObservableObject {
     // MARK: - Controls
 
     func pause(item: DownloadItem) {
-        manager.pauseDownload(forKey: item.id)
-        DispatchQueue.main.async { item.status = .paused }
+        manager.pauseDownload(forKey: item.url)
+        DispatchQueue.main.async {
+            item.status = .paused
+            item.speedBytesPerSec = 0
+        }
         store.save()
     }
 
     func resume(item: DownloadItem) {
-        item.status = .downloading
+        DispatchQueue.main.async { item.status = .downloading }
         let resumed = manager.resumeDownload(
-            withKey: item.id,
+            withKey: item.url,
             inDirectory: "Downloads",
             withName: item.filename,
             onProgress: { [weak item] progress, downloaded, total in
@@ -98,6 +102,7 @@ final class DownloadsViewModel: ObservableObject {
                     } else {
                         item.status        = .completed
                         item.progress      = 1.0
+                        item.speedBytesPerSec = 0
                         item.completedAt   = Date()
                         item.savedFilePath = fileURL?.path
                     }
@@ -106,12 +111,14 @@ final class DownloadsViewModel: ObservableObject {
                 }
             }
         )
-        if !resumed { item.status = .paused }
+        if !resumed {
+            DispatchQueue.main.async { item.status = .paused }
+        }
         store.save()
     }
 
     func cancel(item: DownloadItem) {
-        manager.cancelDownload(forKey: item.id)
+        manager.cancelDownload(forKey: item.url)
         store.remove(id: item.id)
         DispatchQueue.main.async {
             self.activeItems.removeAll { $0.id == item.id }
@@ -133,11 +140,9 @@ final class DownloadsViewModel: ObservableObject {
     // MARK: - Private
 
     private func moveToHistory(_ item: DownloadItem) {
-        // Only move if terminal state
         guard item.status == .completed || item.status == .failed else { return }
         activeItems.removeAll { $0.id == item.id }
-        let record = DownloadRecord(from: item)
-        historyItems.insert(record, at: 0)
+        historyItems.insert(DownloadRecord(from: item), at: 0)
     }
 
     private func loadHistory() {
@@ -146,30 +151,27 @@ final class DownloadsViewModel: ObservableObject {
             .map { DownloadRecord(from: $0) }
     }
 
-    /// Re-attach callbacks to URLSession tasks that survived an app restart.
     private func reattachInFlight() {
         let keys = manager.currentDownloadKeys()
         for key in keys {
-            // Restore item from store or create a placeholder
-            let existing = store.item(forId: key)
             let item: DownloadItem
-            if let e = existing, e.status == .downloading || e.status == .paused {
+            if let e = store.item(forId: key), e.status == .downloading || e.status == .paused {
                 item = e
             } else {
-                let name = URL(string: key)?.lastPathComponent.nilIfEmpty ?? "Download"
-                item = DownloadItem(url: key, filename: name)
+                item = DownloadItem(url: key,
+                                   filename: URL(string: key)?.lastPathComponent.nilIfEmpty ?? "Download")
             }
             item.status = .downloading
-            if !activeItems.contains(where: { $0.id == key }) {
+            if !activeItems.contains(where: { $0.id == item.id }) {
                 activeItems.append(item)
             }
             manager.reattach(
                 forKey: key,
-                onProgress: { [weak item] p, dl, total in
+                onProgress: { [weak item] progress, downloaded, total in
                     DispatchQueue.main.async {
                         item?.status          = .downloading
-                        item?.progress        = Double(p)
-                        item?.bytesDownloaded = dl
+                        item?.progress        = Double(progress)
+                        item?.bytesDownloaded = downloaded
                         item?.totalBytes      = total
                     }
                 },
