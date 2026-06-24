@@ -72,9 +72,9 @@ struct ActiveDownloadsView: View {
 // MARK: - Download Row
 
 struct DownloadRowView: View {
-    let item: DownloadItem
-    // Timer to refresh progress display while downloading
-    @State private var tick = false
+    // @ObservedObject — subscribes to DownloadItem's @Published properties.
+    // Without this, SwiftUI never re-renders when progress/speed/status changes.
+    @ObservedObject var item: DownloadItem
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -113,11 +113,6 @@ struct DownloadRowView: View {
             }
         }
         .padding(.vertical, 4)
-        .onReceive(
-            Timer.publish(every: 1, on: .main, in: .common).autoconnect()
-        ) { _ in
-            if item.status == .downloading { tick.toggle() }
-        }
     }
 
     @ViewBuilder
