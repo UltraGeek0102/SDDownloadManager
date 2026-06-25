@@ -2,42 +2,58 @@ import UIKit
 
 class SDFileUtils: NSObject {
 
-    // MARK: - File saving
+    // MARK: - Write from memory (preferred — no temp file dependency)
 
-    /// Saves a downloaded file to the app's Documents/[directory]/ folder.
-    /// Uses copy (not move) because sideloaded app sandbox restrictions can prevent
-    /// moving temp files that background URLSession places in system-managed locations.
-    static func saveFile(fromUrl url: URL,
-                         toDirectory directory: String?,
-                         withName name: String) -> (Bool, Error?, URL?)
+    /// Write file data directly to Documents/[directory]/[name].
+    /// Called with data already loaded into memory, so there's no temp file
+    /// path that can expire or be inaccessible due to sandbox restrictions.
+    static func writeData(_ data: Data,
+                          toDirectory directory: String?,
+                          withName name: String) -> (Bool, Error?, URL?)
     {
-        // Resolve a safe, non-empty filename
         let finalName = resolvedFilename(from: name)
+        let destDir   = resolvedDirectory(directory)
 
-        // Ensure destination directory exists
-        let destDir: URL
-        if let dir = directory, !dir.isEmpty {
-            let base = documentsDirectoryPath().appendingPathComponent(dir)
-            do {
-                try FileManager.default.createDirectory(
-                    at: base, withIntermediateDirectories: true, attributes: nil)
-                destDir = base
-            } catch {
-                return (false, error, nil)
-            }
-        } else {
-            destDir = documentsDirectoryPath()
+        guard let destDir = destDir.0 else {
+            return (false, destDir.1, nil)
         }
 
         let destURL = destDir.appendingPathComponent(finalName)
-
-        // Remove existing file with same name
         if FileManager.default.fileExists(atPath: destURL.path) {
             try? FileManager.default.removeItem(at: destURL)
         }
 
-        // Try move first, then copy as fallback.
-        // Background URLSession temp files on sideloaded apps may only support copy.
+        do {
+            try data.write(to: destURL, options: .atomic)
+            print("[FileUtils] wrote \(data.count) bytes → \(destURL.path)")
+            return (true, nil, destURL)
+        } catch {
+            print("[FileUtils] write failed: \(error)")
+            return (false, error, nil)
+        }
+    }
+
+    // MARK: - Move/copy from temp URL (fallback)
+
+    static func saveFile(fromUrl url: URL,
+                         toDirectory directory: String?,
+                         withName name: String) -> (Bool, Error?, URL?)
+    {
+        // If we can read the file into memory, use writeData for reliability
+        if let data = try? Data(contentsOf: url) {
+            return writeData(data, toDirectory: directory, withName: name)
+        }
+
+        // Last resort: try move then copy
+        let finalName = resolvedFilename(from: name)
+        let destDir   = resolvedDirectory(directory)
+        guard let dir = destDir.0 else { return (false, destDir.1, nil) }
+        let destURL = dir.appendingPathComponent(finalName)
+
+        if FileManager.default.fileExists(atPath: destURL.path) {
+            try? FileManager.default.removeItem(at: destURL)
+        }
+
         do {
             try FileManager.default.moveItem(at: url, to: destURL)
             return (true, nil, destURL)
@@ -45,17 +61,13 @@ class SDFileUtils: NSObject {
             do {
                 try FileManager.default.copyItem(at: url, to: destURL)
                 return (true, nil, destURL)
-            } catch let copyErr {
-                // Return the copy error with context about source and dest
-                let msg = "Save failed: \(copyErr.localizedDescription)\nSource: \(url.path)\nDest: \(destURL.path)"
-                let err = NSError(domain: "SDFileUtils", code: 1,
-                                  userInfo: [NSLocalizedDescriptionKey: msg])
-                return (false, err, nil)
+            } catch let e {
+                return (false, e, nil)
             }
         }
     }
 
-    // MARK: - Backwards-compat alias used by existing call sites
+    // backwards-compat alias
     static func moveFile(fromUrl url: URL,
                          toDirectory directory: String?,
                          withName name: String) -> (Bool, Error?, URL?)
@@ -65,43 +77,43 @@ class SDFileUtils: NSObject {
 
     // MARK: - Helpers
 
-    /// Documents directory — visible in Files app when UIFileSharingEnabled = YES
     static func documentsDirectoryPath() -> URL {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
     }
 
     static func createDirectoryIfNotExists(withName name: String) -> (Bool, Error?) {
-        guard !name.isEmpty else {
-            return (false, NSError(domain: "SDFileUtils", code: 2,
-                                   userInfo: [NSLocalizedDescriptionKey: "Directory name cannot be empty"]))
-        }
         let url = documentsDirectoryPath().appendingPathComponent(name)
         guard !FileManager.default.fileExists(atPath: url.path) else { return (true, nil) }
         do {
             try FileManager.default.createDirectory(
                 at: url, withIntermediateDirectories: true, attributes: nil)
             return (true, nil)
-        } catch {
-            return (false, error)
-        }
+        } catch { return (false, error) }
     }
 
-    /// Returns a safe, non-empty filename.
-    /// - Strips URL query string component
-    /// - Removes filesystem-illegal characters
-    /// - Falls back to a timestamp name if nothing usable remains
+    /// Strips query strings and illegal filesystem characters from a filename.
     static func resolvedFilename(from raw: String) -> String {
         var name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        // Strip query string (e.g. "file.mp4?token=abc" → "file.mp4")
         if let q = name.firstIndex(of: "?") { name = String(name[..<q]) }
         if let q = name.firstIndex(of: "#") { name = String(name[..<q]) }
-
-        // Remove filesystem-illegal characters
         let illegal = CharacterSet(charactersIn: "/\\:*?\"<>|")
         name = name.components(separatedBy: illegal).joined(separator: "_")
-        name = name.trimmingCharacters(in: .whitespacesAndNewlines)
-
+                   .trimmingCharacters(in: .whitespacesAndNewlines)
         return name.isEmpty ? "download_\(Int(Date().timeIntervalSince1970))" : name
+    }
+
+    // MARK: - Private
+
+    private static func resolvedDirectory(_ directory: String?) -> (URL?, Error?) {
+        let base = documentsDirectoryPath()
+        guard let dir = directory, !dir.isEmpty else { return (base, nil) }
+        let url = base.appendingPathComponent(dir)
+        do {
+            try FileManager.default.createDirectory(
+                at: url, withIntermediateDirectories: true, attributes: nil)
+            return (url, nil)
+        } catch {
+            return (nil, error)
+        }
     }
 }
