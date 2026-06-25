@@ -234,46 +234,40 @@ extension SDDownloadManager: URLSessionDelegate, URLSessionDownloadDelegate {
                            downloadTask: URLSessionDownloadTask,
                            didFinishDownloadingTo location: URL)
     {
-        guard let key = key(for: downloadTask),
-              let download = downloadQueue.sync(execute: { _ongoingDownloads[key] })
-        else {
-            // Key lookup failed — still try to move the file using suggested filename
-            let name = downloadTask.response?.suggestedFilename
-                ?? downloadTask.originalRequest?.url?.lastPathComponent
-                ?? "download_\(Int(Date().timeIntervalSince1970))"
-            let result = SDFileUtils.moveFile(fromUrl: location, toDirectory: "Downloads", withName: name)
-            print("[SDDownloadManager] orphan task completed — moved to: \(result.2?.path ?? "failed")")
-            return
-        }
+        // SAVE FILE IMMEDIATELY — temp file at `location` is only valid during this call.
+        let key      = key(for: downloadTask)
+        let download = key.flatMap { k in downloadQueue.sync { _ongoingDownloads[k] } }
 
-        let name = download.fileName
+        let rawName   = download?.fileName
             ?? downloadTask.response?.suggestedFilename
             ?? downloadTask.originalRequest?.url?.lastPathComponent
-            ?? URL(string: key)?.lastPathComponent
-            ?? "download_\(Int(Date().timeIntervalSince1970))"
-
-        // Guard against empty name (causes "cannot create file")
-        let safeName = name.isEmpty ? "download_\(Int(Date().timeIntervalSince1970))" : name
-
-        if let response = downloadTask.response as? HTTPURLResponse, response.statusCode >= 400 {
-            let err = makeError(HTTPURLResponse.localizedString(forStatusCode: response.statusCode))
-            DispatchQueue.main.async { download.completionBlock(err, nil) }
-            LiveActivityBridge.shared.end(id: key, success: false)
-        } else {
-            let result = SDFileUtils.moveFile(fromUrl: location,
-                                              toDirectory: download.directoryName,
+            ?? key.flatMap { URL(string: $0)?.lastPathComponent }
+            ?? "download"
+        let safeName  = SDFileUtils.resolvedFilename(from: rawName)
+        let directory = download?.directoryName ?? "Downloads"
+        let saveResult = SDFileUtils.saveFile(fromUrl: location,
+                                              toDirectory: directory,
                                               withName: safeName)
+        print("[DL] saved \(safeName) ok=\(saveResult.0) err=\(saveResult.1?.localizedDescription ?? "-")")
+
+        guard let k = key, let dl = download else { return }
+
+        if let resp = downloadTask.response as? HTTPURLResponse, resp.statusCode >= 400 {
+            let err = makeError(HTTPURLResponse.localizedString(forStatusCode: resp.statusCode))
+            DispatchQueue.main.async { dl.completionBlock(err, nil) }
+            LiveActivityBridge.shared.end(id: k, success: false)
+        } else {
             DispatchQueue.main.async {
-                result.0
-                    ? download.completionBlock(nil, result.2)
-                    : download.completionBlock(result.1, nil)
+                saveResult.0
+                    ? dl.completionBlock(nil, saveResult.2)
+                    : dl.completionBlock(saveResult.1, nil)
             }
-            LiveActivityBridge.shared.end(id: key, success: result.0)
+            LiveActivityBridge.shared.end(id: k, success: saveResult.0)
         }
 
-        lastBytesMap.removeValue(forKey: key)
-        lastTimeMap.removeValue(forKey: key)
-        downloadQueue.async(flags: .barrier) { self._ongoingDownloads.removeValue(forKey: key) }
+        lastBytesMap.removeValue(forKey: k)
+        lastTimeMap.removeValue(forKey: k)
+        downloadQueue.async(flags: .barrier) { self._ongoingDownloads.removeValue(forKey: k) }
     }
 
     public func urlSession(_ session: URLSession,
