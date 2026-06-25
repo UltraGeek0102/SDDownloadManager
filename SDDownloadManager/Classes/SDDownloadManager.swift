@@ -4,47 +4,35 @@ import UserNotifications
 public final class SDDownloadManager: NSObject {
 
     // MARK: - Types
-
     public typealias DownloadCompletionBlock         = (_ error: Error?, _ fileUrl: URL?) -> Void
     public typealias DownloadProgressBlock           = (_ progress: CGFloat, _ downloaded: Int64, _ total: Int64) -> Void
     public typealias BackgroundDownloadCompletionHandler = () -> Void
 
     // MARK: - Singleton
-
     public static let shared = SDDownloadManager()
 
-    // MARK: - Properties
+    // MARK: - State
+    private let lock = NSLock()
+    private var _tasks: [String: SDDownloadObject] = [:]
 
-    private let downloadQueue = DispatchQueue(label: "com.sddownloadmanager.queue", attributes: .concurrent)
-    private var _ongoingDownloads: [String: SDDownloadObject] = [:]
-    private var ongoingDownloads: [String: SDDownloadObject] {
-        get { downloadQueue.sync { _ongoingDownloads } }
-        set { downloadQueue.async(flags: .barrier) { self._ongoingDownloads = newValue } }
-    }
-
-    // Speed calculation state
     private var lastBytesMap: [String: Int64] = [:]
     private var lastTimeMap:  [String: Date]  = [:]
 
-    private var session:           URLSession!
-    private var backgroundSession: URLSession!
+    // Background URLSession — iOS manages transfers even when app is suspended
+    private var bgSession: URLSession!
 
     public var backgroundCompletionHandler: BackgroundDownloadCompletionHandler?
     public var showLocalNotificationOnBackgroundDownloadDone = true
     public var localNotificationText: String?
 
     // MARK: - Init
-
     override private init() {
         super.init()
-        let defaultConfig = URLSessionConfiguration.default
-        session = URLSession(configuration: defaultConfig, delegate: self, delegateQueue: nil)
-
-        let bgConfig = URLSessionConfiguration.background(
+        let cfg = URLSessionConfiguration.background(
             withIdentifier: Bundle.main.bundleIdentifier! + ".download")
-        bgConfig.isDiscretionary = false
-        bgConfig.sessionSendsLaunchEvents = true
-        backgroundSession = URLSession(configuration: bgConfig, delegate: self, delegateQueue: nil)
+        cfg.isDiscretionary = false
+        cfg.sessionSendsLaunchEvents = true
+        bgSession = URLSession(configuration: cfg, delegate: self, delegateQueue: nil)
     }
 
     // MARK: - Public API
@@ -61,31 +49,24 @@ public final class SDDownloadManager: NSObject {
             completionBlock(makeError("Invalid URL"), nil)
             return nil
         }
-
         let key = url.absoluteString
-        if isDownloadInProgress(forKey: key) {
+        guard !isDownloadInProgress(forKey: key) else {
             completionBlock(makeError("Already in progress"), nil)
             return nil
         }
 
-        let task = shouldDownloadInBackground
-            ? backgroundSession.downloadTask(with: request)
-            : session.downloadTask(with: request)
+        let task = bgSession.downloadTask(with: request)
+        task.taskDescription = key   // always use this — originalRequest can be nil on bg tasks
 
-        // Store the key in taskDescription so we can retrieve it even if
-        // originalRequest is nil (which can happen with background URLSession).
-        task.taskDescription = key
+        let name = fileName ?? SDFileUtils.resolvedFilename(from: url.lastPathComponent)
+        let obj  = SDDownloadObject(downloadTask: task,
+                                    progressBlock: progressBlock,
+                                    completionBlock: completionBlock,
+                                    fileName: name,
+                                    directoryName: directory ?? "Downloads")
+        lock.lock(); _tasks[key] = obj; lock.unlock()
 
-        let obj = SDDownloadObject(downloadTask: task,
-                                   progressBlock: progressBlock,
-                                   completionBlock: completionBlock,
-                                   fileName: fileName,
-                                   directoryName: directory)
-        downloadQueue.async(flags: .barrier) { self._ongoingDownloads[key] = obj }
-
-        let name = fileName ?? (url.lastPathComponent.isEmpty ? (url.host ?? "Download") : url.lastPathComponent)
         LiveActivityBridge.shared.start(id: key, filename: name)
-
         task.resume()
         return key
     }
@@ -97,101 +78,99 @@ public final class SDDownloadManager: NSObject {
                                onProgress progressBlock: DownloadProgressBlock? = nil,
                                onCompletion completionBlock: @escaping DownloadCompletionBlock) -> Bool
     {
-        guard let resumeData = UserDefaults.standard.data(forKey: "resume_\(key)") else {
+        guard let resumeData = UserDefaults.standard.data(forKey: resumeKey(key)) else {
             return false
         }
-        UserDefaults.standard.removeObject(forKey: "resume_\(key)")
+        UserDefaults.standard.removeObject(forKey: resumeKey(key))
 
-        let task = backgroundSession.downloadTask(withResumeData: resumeData)
-        task.taskDescription = key   // store key here too
+        let task = bgSession.downloadTask(withResumeData: resumeData)
+        task.taskDescription = key
 
-        let obj = SDDownloadObject(downloadTask: task,
-                                   progressBlock: progressBlock,
-                                   completionBlock: completionBlock,
-                                   fileName: fileName,
-                                   directoryName: directory)
-        downloadQueue.async(flags: .barrier) { self._ongoingDownloads[key] = obj }
+        let name = fileName ?? SDFileUtils.resolvedFilename(
+            from: URL(string: key)?.lastPathComponent ?? "download")
+        let obj  = SDDownloadObject(downloadTask: task,
+                                    progressBlock: progressBlock,
+                                    completionBlock: completionBlock,
+                                    fileName: name,
+                                    directoryName: directory ?? "Downloads")
+        lock.lock(); _tasks[key] = obj; lock.unlock()
 
-        let name = fileName ?? URL(string: key)?.lastPathComponent ?? "Download"
         LiveActivityBridge.shared.start(id: key, filename: name)
         task.resume()
         return true
     }
 
     public func pauseDownload(forKey key: String) {
-        downloadQueue.async {
-            guard let obj = self._ongoingDownloads[key] else { return }
-            obj.downloadTask.cancel(byProducingResumeData: { data in
-                if let data = data {
-                    UserDefaults.standard.set(data, forKey: "resume_\(key)")
-                }
-                self.downloadQueue.async(flags: .barrier) {
-                    self._ongoingDownloads.removeValue(forKey: key)
-                }
-                LiveActivityBridge.shared.end(id: key, success: false)
-            })
-        }
+        lock.lock(); let obj = _tasks[key]; lock.unlock()
+        obj?.downloadTask.cancel(byProducingResumeData: { [weak self] data in
+            if let data = data {
+                UserDefaults.standard.set(data, forKey: self?.resumeKey(key) ?? "resume_\(key)")
+            }
+            self?.lock.lock(); self?._tasks.removeValue(forKey: key); self?.lock.unlock()
+            LiveActivityBridge.shared.end(id: key, success: false)
+        })
     }
 
     public func cancelDownload(forKey key: String) {
-        downloadQueue.async(flags: .barrier) {
-            self._ongoingDownloads[key]?.downloadTask.cancel()
-            self._ongoingDownloads.removeValue(forKey: key)
-            UserDefaults.standard.removeObject(forKey: "resume_\(key)")
-        }
+        lock.lock(); let obj = _tasks[key]; _tasks.removeValue(forKey: key); lock.unlock()
+        obj?.downloadTask.cancel()
+        UserDefaults.standard.removeObject(forKey: resumeKey(key))
         lastBytesMap.removeValue(forKey: key)
         lastTimeMap.removeValue(forKey: key)
         LiveActivityBridge.shared.end(id: key, success: false)
     }
 
     public func cancelAllDownloads() {
-        downloadQueue.sync { Array(_ongoingDownloads.keys) }.forEach { cancelDownload(forKey: $0) }
+        lock.lock(); let keys = Array(_tasks.keys); lock.unlock()
+        keys.forEach { cancelDownload(forKey: $0) }
     }
 
     public func isDownloadInProgress(forKey key: String) -> Bool {
-        downloadQueue.sync { _ongoingDownloads[key] != nil }
+        lock.lock(); defer { lock.unlock() }
+        return _tasks[key] != nil
     }
 
     public func hasResumeData(forKey key: String) -> Bool {
-        UserDefaults.standard.data(forKey: "resume_\(key)") != nil
+        UserDefaults.standard.data(forKey: resumeKey(key)) != nil
     }
 
     public func currentDownloadKeys() -> [String] {
-        downloadQueue.sync { Array(_ongoingDownloads.keys) }
+        lock.lock(); defer { lock.unlock() }
+        return Array(_tasks.keys)
     }
 
     public func reattach(forKey key: String,
-                         onProgress progressBlock: DownloadProgressBlock?,
-                         onCompletion completionBlock: @escaping DownloadCompletionBlock) {
-        downloadQueue.async(flags: .barrier) {
-            if let obj = self._ongoingDownloads[key] {
-                obj.progressBlock   = progressBlock
-                obj.completionBlock = completionBlock
-            }
+                         onProgress: DownloadProgressBlock?,
+                         onCompletion: @escaping DownloadCompletionBlock) {
+        lock.lock()
+        if let obj = _tasks[key] {
+            obj.progressBlock   = onProgress
+            obj.completionBlock = onCompletion
         }
+        lock.unlock()
     }
 
-    // MARK: - Private helpers
+    // MARK: - Private
+
+    private func resumeKey(_ key: String) -> String { "resume_\(key)" }
 
     private func makeError(_ msg: String) -> NSError {
         NSError(domain: "SDDownloadManager", code: 0,
                 userInfo: [NSLocalizedDescriptionKey: msg])
     }
 
-    /// Resolve the download key from a URLSessionTask.
-    /// Prefers taskDescription (set by us) over originalRequest URL
-    /// because background URLSession can nil out originalRequest.
-    private func key(for task: URLSessionTask) -> String? {
-        if let desc = task.taskDescription, !desc.isEmpty { return desc }
+    private func taskKey(for task: URLSessionTask) -> String? {
+        // taskDescription is set by us and survives background suspension
+        if let d = task.taskDescription, !d.isEmpty { return d }
         return task.originalRequest?.url?.absoluteString
     }
 
-    private func calculateSpeed(key: String, totalBytesWritten: Int64) -> Int64 {
-        let now = Date()
+    private func calculateSpeed(key: String, bytesWritten: Int64) -> Int64 {
+        let now  = Date()
         let elapsed = now.timeIntervalSince(lastTimeMap[key] ?? now)
-        let delta = totalBytesWritten - (lastBytesMap[key] ?? 0)
-        let speed = elapsed > 0.3 ? Int64(Double(max(delta, 0)) / elapsed) : 0
-        lastBytesMap[key] = totalBytesWritten
+        let delta   = bytesWritten - (lastBytesMap[key] ?? 0)
+        let speed   = elapsed > 0.3 ? Int64(Double(max(delta, 0)) / elapsed) : 0
+        lastBytesMap[key] = bytesWritten
         lastTimeMap[key]  = now
         return speed
     }
@@ -207,23 +186,17 @@ extension SDDownloadManager: URLSessionDelegate, URLSessionDownloadDelegate {
                            totalBytesWritten: Int64,
                            totalBytesExpectedToWrite: Int64)
     {
-        guard let key = key(for: downloadTask),
-              let download = downloadQueue.sync(execute: { _ongoingDownloads[key] })
-        else { return }
+        guard let key = taskKey(for: downloadTask) else { return }
+        lock.lock(); let obj = _tasks[key]; lock.unlock()
 
         let progress = totalBytesExpectedToWrite > 0
-            ? CGFloat(totalBytesWritten) / CGFloat(totalBytesExpectedToWrite)
-            : 0
-        let _ = calculateSpeed(key: key, totalBytesWritten: totalBytesWritten)
+            ? CGFloat(totalBytesWritten) / CGFloat(totalBytesExpectedToWrite) : 0
+        let _ = calculateSpeed(key: key, bytesWritten: totalBytesWritten)
 
-        // Update Live Activity directly from URLSession delegate —
-        // this IS a system-granted execution context where await works.
-        LiveActivityBridge.shared.update(id: key,
-                                         progress: Double(progress),
+        LiveActivityBridge.shared.update(id: key, progress: Double(progress),
                                          downloaded: totalBytesWritten,
                                          total: totalBytesExpectedToWrite)
-
-        if let block = download.progressBlock {
+        if let block = obj?.progressBlock {
             DispatchQueue.main.async {
                 block(progress, totalBytesWritten, totalBytesExpectedToWrite)
             }
@@ -234,61 +207,85 @@ extension SDDownloadManager: URLSessionDelegate, URLSessionDownloadDelegate {
                            downloadTask: URLSessionDownloadTask,
                            didFinishDownloadingTo location: URL)
     {
-        // SAVE FILE IMMEDIATELY — temp file at `location` is only valid during this call.
-        let key      = key(for: downloadTask)
-        let download = key.flatMap { k in downloadQueue.sync { _ongoingDownloads[k] } }
+        // Resolve key and download object
+        guard let key = taskKey(for: downloadTask) else {
+            print("[DL] no key for task — dropping file at \(location.path)")
+            return
+        }
+        lock.lock(); let obj = _tasks[key]; lock.unlock()
 
-        let rawName   = download?.fileName
+        let directory = obj?.directoryName ?? "Downloads"
+        let rawName   = obj?.fileName
             ?? downloadTask.response?.suggestedFilename
             ?? downloadTask.originalRequest?.url?.lastPathComponent
-            ?? key.flatMap { URL(string: $0)?.lastPathComponent }
+            ?? URL(string: key)?.lastPathComponent
             ?? "download"
-        let safeName  = SDFileUtils.resolvedFilename(from: rawName)
-        let directory = download?.directoryName ?? "Downloads"
-        let saveResult = SDFileUtils.saveFile(fromUrl: location,
-                                              toDirectory: directory,
-                                              withName: safeName)
-        print("[DL] saved \(safeName) ok=\(saveResult.0) err=\(saveResult.1?.localizedDescription ?? "-")")
+        let safeName = SDFileUtils.resolvedFilename(from: rawName)
 
-        guard let k = key, let dl = download else { return }
+        // Read the temp file into memory IMMEDIATELY before it can be cleaned up.
+        // This is the most reliable approach for sideloaded apps where the sandbox
+        // may place temp files in a path we can't move from later.
+        let fileData: Data
+        do {
+            fileData = try Data(contentsOf: location)
+        } catch {
+            print("[DL] failed to read temp file: \(error)")
+            DispatchQueue.main.async {
+                obj?.completionBlock(error, nil)
+            }
+            LiveActivityBridge.shared.end(id: key, success: false)
+            lock.lock(); _tasks.removeValue(forKey: key); lock.unlock()
+            return
+        }
+
+        // Write to Documents from memory — no temp file path dependency
+        let saveResult = SDFileUtils.writeData(fileData,
+                                               toDirectory: directory,
+                                               withName: safeName)
+        print("[DL] wrote \(safeName) ok=\(saveResult.0) err=\(saveResult.1?.localizedDescription ?? "-")")
 
         if let resp = downloadTask.response as? HTTPURLResponse, resp.statusCode >= 400 {
             let err = makeError(HTTPURLResponse.localizedString(forStatusCode: resp.statusCode))
-            DispatchQueue.main.async { dl.completionBlock(err, nil) }
-            LiveActivityBridge.shared.end(id: k, success: false)
+            DispatchQueue.main.async { obj?.completionBlock(err, nil) }
+            LiveActivityBridge.shared.end(id: key, success: false)
         } else {
             DispatchQueue.main.async {
                 saveResult.0
-                    ? dl.completionBlock(nil, saveResult.2)
-                    : dl.completionBlock(saveResult.1, nil)
+                    ? obj?.completionBlock(nil, saveResult.2)
+                    : obj?.completionBlock(saveResult.1, nil)
             }
-            LiveActivityBridge.shared.end(id: k, success: saveResult.0)
+            LiveActivityBridge.shared.end(id: key, success: saveResult.0)
         }
 
-        lastBytesMap.removeValue(forKey: k)
-        lastTimeMap.removeValue(forKey: k)
-        downloadQueue.async(flags: .barrier) { self._ongoingDownloads.removeValue(forKey: k) }
+        lastBytesMap.removeValue(forKey: key)
+        lastTimeMap.removeValue(forKey: key)
+        lock.lock(); _tasks.removeValue(forKey: key); lock.unlock()
     }
 
     public func urlSession(_ session: URLSession,
                            task: URLSessionTask,
                            didCompleteWithError error: Error?)
     {
-        guard let error = error,
-              let key = key(for: task),
-              let dl  = downloadQueue.sync(execute: { _ongoingDownloads[key] })
-        else { return }
+        guard let error = error else { return }
 
-        // Stash resume data if present
-        if let resumeData = (error as NSError).userInfo[NSURLSessionDownloadTaskResumeData] as? Data {
-            UserDefaults.standard.set(resumeData, forKey: "resume_\(key)")
+        // Ignore cancellation (pause stores resume data separately)
+        let nsErr = error as NSError
+        if nsErr.domain == NSURLErrorDomain && nsErr.code == NSURLErrorCancelled { return }
+
+        guard let key = taskKey(for: task) else { return }
+        lock.lock(); let obj = _tasks[key]; lock.unlock()
+        guard let obj = obj else { return }
+
+        // Stash resume data if present in error userInfo
+        if let resumeData = nsErr.userInfo[NSURLSessionDownloadTaskResumeData] as? Data {
+            UserDefaults.standard.set(resumeData, forKey: resumeKey(key))
         }
 
-        DispatchQueue.main.async { dl.completionBlock(error, nil) }
+        DispatchQueue.main.async { obj.completionBlock(error, nil) }
         LiveActivityBridge.shared.end(id: key, success: false)
         lastBytesMap.removeValue(forKey: key)
         lastTimeMap.removeValue(forKey: key)
-        downloadQueue.async(flags: .barrier) { self._ongoingDownloads.removeValue(forKey: key) }
+        lock.lock(); _tasks.removeValue(forKey: key); lock.unlock()
     }
 
     public func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
@@ -315,8 +312,7 @@ extension SDDownloadManager: URLSessionDelegate, URLSessionDownloadDelegate {
             let req = UNNotificationRequest(
                 identifier: "SDDownload-\(UUID().uuidString)",
                 content: content,
-                trigger: UNTimeIntervalNotificationTrigger(timeInterval: 0.1, repeats: false)
-            )
+                trigger: UNTimeIntervalNotificationTrigger(timeInterval: 0.1, repeats: false))
             UNUserNotificationCenter.current().add(req, withCompletionHandler: nil)
         }
     }
