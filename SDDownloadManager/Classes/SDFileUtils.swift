@@ -24,7 +24,7 @@ class SDFileUtils: NSObject {
         }
 
         do {
-            try data.write(to: destURL, options: .atomic)
+            try data.write(to: destURL)  // No .atomic — atomic writes fail on some sideloaded app sandboxes
             print("[FileUtils] wrote \(data.count) bytes → \(destURL.path)")
             return (true, nil, destURL)
         } catch {
