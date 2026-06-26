@@ -38,9 +38,7 @@ struct HistoryView: View {
                     if !vm.historyItems.isEmpty {
                         Button(role: .destructive) {
                             showClearConfirm = true
-                        } label: {
-                            Text("Clear All")
-                        }
+                        } label: { Text("Clear All") }
                     }
                 }
             }
@@ -55,6 +53,7 @@ struct HistoryView: View {
 
 struct HistoryRowView: View {
     let record: DownloadRecord
+    @State private var showDetail = false
     @State private var showShareSheet = false
 
     var body: some View {
@@ -76,17 +75,18 @@ struct HistoryRowView: View {
                 }
                 Text(record.formattedDate)
                     .font(.caption).foregroundColor(.secondary)
-
                 if let path = record.savedFilePath {
                     Text(path)
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.head)
+                        .font(.caption2).foregroundColor(.secondary)
+                        .lineLimit(1).truncationMode(.head)
                 }
             } else {
+                // Tap to see full error message
                 Text(record.errorMessage ?? "Failed")
                     .font(.caption).foregroundColor(.red)
+                    .lineLimit(2)
+                Text("Tap for details")
+                    .font(.caption2).foregroundColor(.secondary)
                 Text(record.formattedDate)
                     .font(.caption).foregroundColor(.secondary)
             }
@@ -94,7 +94,16 @@ struct HistoryRowView: View {
         .padding(.vertical, 2)
         .contentShape(Rectangle())
         .onTapGesture {
-            if record.savedFilePath != nil { showShareSheet = true }
+            if record.status == .completed {
+                if record.savedFilePath != nil { showShareSheet = true }
+            } else {
+                showDetail = true
+            }
+        }
+        .alert("Download Error", isPresented: $showDetail) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(record.errorMessage ?? "Unknown error")
         }
         .sheet(isPresented: $showShareSheet) {
             if let path = record.savedFilePath {
