@@ -68,6 +68,7 @@ public final class SDDownloadManager: NSObject {
 
         LiveActivityBridge.shared.start(id: key, filename: name)
         task.resume()
+        DispatchQueue.main.async { BackgroundKeepAlive.shared.start() }
         return key
     }
 
@@ -137,6 +138,11 @@ public final class SDDownloadManager: NSObject {
     public func currentDownloadKeys() -> [String] {
         lock.lock(); defer { lock.unlock() }
         return Array(_tasks.keys)
+    }
+
+    public var hasActiveDownloads: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return !_tasks.isEmpty
     }
 
     public func reattach(forKey key: String,
@@ -260,6 +266,10 @@ extension SDDownloadManager: URLSessionDelegate, URLSessionDownloadDelegate {
         lastBytesMap.removeValue(forKey: key)
         lastTimeMap.removeValue(forKey: key)
         lock.lock(); _tasks.removeValue(forKey: key); lock.unlock()
+        // Stop keep-alive if no more downloads running
+        if !hasActiveDownloads {
+            DispatchQueue.main.async { BackgroundKeepAlive.shared.stop() }
+        }
     }
 
     public func urlSession(_ session: URLSession,
@@ -286,6 +296,10 @@ extension SDDownloadManager: URLSessionDelegate, URLSessionDownloadDelegate {
         lastBytesMap.removeValue(forKey: key)
         lastTimeMap.removeValue(forKey: key)
         lock.lock(); _tasks.removeValue(forKey: key); lock.unlock()
+        // Stop keep-alive if no more downloads running
+        if !hasActiveDownloads {
+            DispatchQueue.main.async { BackgroundKeepAlive.shared.stop() }
+        }
     }
 
     public func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
