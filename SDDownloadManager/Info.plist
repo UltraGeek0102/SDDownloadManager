@@ -26,6 +26,7 @@
 	<!-- Background downloading — NSURLSession background transfers -->
 	<key>UIBackgroundModes</key>
 	<array>
+		<string>audio</string>
 		<string>fetch</string>
 		<string>processing</string>
 	</array>
