@@ -1,117 +1,126 @@
-import WidgetKit
-import SwiftUI
 import ActivityKit
-
-private func formatBytes(_ n: Int64) -> String {
-    ByteCountFormatter.string(fromByteCount: n, countStyle: .file)
-}
-private func formatSpeed(_ bps: Int64) -> String {
-    guard bps > 0 else { return "–" }
-    return "\(formatBytes(bps))/s"
-}
-
-// MARK: - Lock Screen / StandBy view
+import Foundation
+import WidgetKit
 
 @available(iOS 16.2, *)
-struct DownloadLockScreenView: View {
-    let context: ActivityViewContext<DownloadActivityAttributes>
+final class LiveActivityManager {
+    static let shared = LiveActivityManager()
+    private init() {}
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Image(systemName: iconName)
-                    .foregroundColor(iconColor)
-                    .font(.title3)
-                Text(context.attributes.filename)
-                    .font(.headline).lineLimit(1).truncationMode(.middle)
-                Spacer()
-                Text(String(format: "%.0f%%", context.state.progress * 100))
-                    .font(.headline).monospacedDigit()
-                    .foregroundColor(iconColor)
-            }
+    private var activities: [String: Activity<DownloadActivityAttributes>] = [:]
+    private var filenames:  [String: String] = [:]
+    private var lastBytes:  [String: Int64]  = [:]
+    private var lastTime:   [String: Date]   = [:]
+    private let lock = NSLock()
 
-            ProgressView(value: context.state.progress)
-                .progressViewStyle(.linear)
-                .tint(iconColor)
-                .scaleEffect(x: 1, y: 1.5)
+    // MARK: - Public API
 
-            HStack {
-                if context.state.totalBytes > 0 {
-                    Text("\(formatBytes(context.state.downloadedBytes)) / \(formatBytes(context.state.totalBytes))")
-                        .font(.caption).foregroundColor(.secondary)
-                } else {
-                    Text(formatBytes(context.state.downloadedBytes))
-                        .font(.caption).foregroundColor(.secondary)
-                }
-                Spacer()
-                Text(formatSpeed(context.state.speedBytesPerSec))
-                    .font(.caption).foregroundColor(.secondary).monospacedDigit()
+    func start(id: String, filename: String) {
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
+        lock.lock(); filenames[id] = filename; lock.unlock()
+
+        Task.detached(priority: .userInitiated) { [weak self] in
+            guard let self = self else { return }
+            self.lock.lock(); let old = self.activities[id]; self.lock.unlock()
+            if let old = old { await old.end(dismissalPolicy: .immediate) }
+
+            let attrs = DownloadActivityAttributes(downloadId: id, filename: filename)
+            let state = DownloadActivityAttributes.ContentState(
+                progress: 0, downloadedBytes: 0, totalBytes: 0,
+                speedBytesPerSec: 0, statusLabel: "Downloading"
+            )
+            do {
+                let act = try Activity<DownloadActivityAttributes>.request(
+                    attributes: attrs,
+                    content: ActivityContent(state: state, staleDate: nil)
+                )
+                self.lock.lock(); self.activities[id] = act; self.lock.unlock()
+                print("[LA] started \(filename)")
+            } catch { print("[LA] start error: \(error)") }
+        }
+    }
+
+    func update(id: String, progress: Double, downloaded: Int64, total: Int64) {
+        lock.lock()
+        let filename = filenames[id] ?? ""
+        let now      = Date()
+        let elapsed  = now.timeIntervalSince(lastTime[id] ?? now)
+        let delta    = downloaded - (lastBytes[id] ?? 0)
+        let speed    = elapsed > 0.1 ? Int64(Double(max(delta, 0)) / elapsed) : 0
+        lastBytes[id] = downloaded
+        lastTime[id]  = now
+        let activity  = activities[id]
+        lock.unlock()
+
+        // ── Path 1: direct async update (works in foreground) ───────────────
+        if let activity = activity {
+            let state = DownloadActivityAttributes.ContentState(
+                progress: min(max(progress, 0), 1),
+                downloadedBytes: downloaded, totalBytes: total,
+                speedBytesPerSec: speed, statusLabel: "Downloading"
+            )
+            Task.detached(priority: .userInitiated) {
+                await activity.update(ActivityContent(state: state, staleDate: nil))
             }
         }
-        .padding()
-        .activityBackgroundTint(Color(.systemBackground).opacity(0.9))
+
+        // ── Path 2: App Group → widget extension process (background reliable) ─
+        // Write progress to shared UserDefaults so the widget extension can read it.
+        // Then wake the extension by reloading timelines.
+        // The widget extension runs in its OWN process — never suspended by iOS.
+        // When getTimeline() is called, it reads this data and calls activity.update()
+        // from a process that iOS has explicitly woken for this purpose.
+        SharedProgressStore.shared.update(
+            id: id, filename: filename, progress: progress,
+            downloaded: downloaded, total: total, speed: speed
+        )
+        WidgetCenter.shared.reloadTimelines(ofKind: "DownloadWidget")
     }
 
-    private var isDone:   Bool { context.state.statusLabel == "Done" }
-    private var isFailed: Bool { context.state.statusLabel == "Stopped" || context.state.statusLabel == "Failed" }
+    func end(id: String, success: Bool, downloaded: Int64 = 0) {
+        lock.lock()
+        let activity = activities[id]
+        let dl       = lastBytes[id] ?? downloaded
+        activities.removeValue(forKey: id)
+        filenames.removeValue(forKey: id)
+        lastBytes.removeValue(forKey: id)
+        lastTime.removeValue(forKey: id)
+        lock.unlock()
 
-    private var iconName: String {
-        isDone   ? "checkmark.circle.fill" :
-        isFailed ? "xmark.circle.fill" :
-                   "arrow.down.circle.fill"
-    }
-    private var iconColor: Color {
-        isDone   ? .green :
-        isFailed ? .red   : .blue
+        SharedProgressStore.shared.remove(id: id)
+        WidgetCenter.shared.reloadTimelines(ofKind: "DownloadWidget")
+
+        guard let activity = activity else { return }
+        let state = DownloadActivityAttributes.ContentState(
+            progress: success ? 1.0 : 0.0,
+            downloadedBytes: dl, totalBytes: 0, speedBytesPerSec: 0,
+            statusLabel: success ? "Done" : "Failed"
+        )
+        Task.detached {
+            await activity.end(
+                ActivityContent(state: state, staleDate: nil),
+                dismissalPolicy: .after(Date().addingTimeInterval(5))
+            )
+        }
     }
 }
 
-// MARK: - Widget configuration
+final class LiveActivityBridge {
+    static let shared = LiveActivityBridge()
+    private init() {}
 
-@available(iOS 16.2, *)
-struct DownloadWidget: Widget {
-    var body: some WidgetConfiguration {
-        ActivityConfiguration(for: DownloadActivityAttributes.self) { context in
-            DownloadLockScreenView(context: context)
-        } dynamicIsland: { context in
-            DynamicIsland {
-                DynamicIslandExpandedRegion(.leading) {
-                    Image(systemName: "arrow.down.circle.fill")
-                        .foregroundColor(.blue).font(.title3).padding(.leading, 4)
-                }
-                DynamicIslandExpandedRegion(.trailing) {
-                    Text(String(format: "%.0f%%", context.state.progress * 100))
-                        .bold().monospacedDigit().padding(.trailing, 4)
-                }
-                DynamicIslandExpandedRegion(.bottom) {
-                    VStack(spacing: 4) {
-                        HStack {
-                            Text(context.attributes.filename)
-                                .font(.caption).lineLimit(1).truncationMode(.middle)
-                            Spacer()
-                        }
-                        ProgressView(value: context.state.progress)
-                            .progressViewStyle(.linear).tint(.blue)
-                        HStack {
-                            Text(formatBytes(context.state.downloadedBytes))
-                                .font(.caption2).foregroundColor(.secondary)
-                            Spacer()
-                            Text(formatSpeed(context.state.speedBytesPerSec))
-                                .font(.caption2).foregroundColor(.secondary).monospacedDigit()
-                        }
-                    }
-                    .padding(.horizontal, 12).padding(.bottom, 6)
-                }
-            } compactLeading: {
-                Image(systemName: "arrow.down.circle.fill").foregroundColor(.blue)
-            } compactTrailing: {
-                Text(String(format: "%.0f%%", context.state.progress * 100))
-                    .monospacedDigit().font(.caption2).bold()
-            } minimal: {
-                Image(systemName: "arrow.down.circle.fill").foregroundColor(.blue)
-            }
-            .widgetURL(URL(string: "sddownloadmanager://open"))
-            .keylineTint(.blue)
+    func start(id: String, filename: String) {
+        if #available(iOS 16.2, *) { LiveActivityManager.shared.start(id: id, filename: filename) }
+    }
+    func update(id: String, progress: Double, downloaded: Int64, total: Int64) {
+        if #available(iOS 16.2, *) {
+            LiveActivityManager.shared.update(id: id, progress: progress,
+                                              downloaded: downloaded, total: total)
+        }
+    }
+    func end(id: String, success: Bool, downloaded: Int64 = 0) {
+        if #available(iOS 16.2, *) {
+            LiveActivityManager.shared.end(id: id, success: success, downloaded: downloaded)
         }
     }
 }
