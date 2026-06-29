@@ -1,126 +1,211 @@
 import ActivityKit
-import Foundation
 import WidgetKit
+import SwiftUI
 
-@available(iOS 16.2, *)
-final class LiveActivityManager {
-    static let shared = LiveActivityManager()
-    private init() {}
+// MARK: - Helpers
 
-    private var activities: [String: Activity<DownloadActivityAttributes>] = [:]
-    private var filenames:  [String: String] = [:]
-    private var lastBytes:  [String: Int64]  = [:]
-    private var lastTime:   [String: Date]   = [:]
-    private let lock = NSLock()
+private func formatBytes(_ n: Int64) -> String {
+    ByteCountFormatter.string(fromByteCount: n, countStyle: .file)
+}
+private func formatSpeed(_ bps: Int64) -> String {
+    guard bps > 0 else { return "–" }
+    return "\(formatBytes(bps))/s"
+}
 
-    // MARK: - Public API
+// MARK: - TimelineProvider widget
+// This widget has no visible home screen UI — its only job is to give WidgetKit
+// a reason to wake the extension process so we can update Live Activities from here.
+// When the main app calls WidgetCenter.reloadTimelines(ofKind:"DownloadWidget"),
+// iOS wakes this extension, getTimeline() runs, and we update all active Live Activities
+// from THIS process — which is never suspended — solving the background freeze issue.
 
-    func start(id: String, filename: String) {
-        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
-        lock.lock(); filenames[id] = filename; lock.unlock()
+struct DownloadEntry: TimelineEntry {
+    let date: Date
+    let items: [SharedProgress]
+}
 
-        Task.detached(priority: .userInitiated) { [weak self] in
-            guard let self = self else { return }
-            self.lock.lock(); let old = self.activities[id]; self.lock.unlock()
-            if let old = old { await old.end(dismissalPolicy: .immediate) }
-
-            let attrs = DownloadActivityAttributes(downloadId: id, filename: filename)
-            let state = DownloadActivityAttributes.ContentState(
-                progress: 0, downloadedBytes: 0, totalBytes: 0,
-                speedBytesPerSec: 0, statusLabel: "Downloading"
-            )
-            do {
-                let act = try Activity<DownloadActivityAttributes>.request(
-                    attributes: attrs,
-                    content: ActivityContent(state: state, staleDate: nil)
-                )
-                self.lock.lock(); self.activities[id] = act; self.lock.unlock()
-                print("[LA] started \(filename)")
-            } catch { print("[LA] start error: \(error)") }
-        }
+struct DownloadTimelineProvider: TimelineProvider {
+    func placeholder(in context: Context) -> DownloadEntry {
+        DownloadEntry(date: Date(), items: [])
     }
 
-    func update(id: String, progress: Double, downloaded: Int64, total: Int64) {
-        lock.lock()
-        let filename = filenames[id] ?? ""
-        let now      = Date()
-        let elapsed  = now.timeIntervalSince(lastTime[id] ?? now)
-        let delta    = downloaded - (lastBytes[id] ?? 0)
-        let speed    = elapsed > 0.1 ? Int64(Double(max(delta, 0)) / elapsed) : 0
-        lastBytes[id] = downloaded
-        lastTime[id]  = now
-        let activity  = activities[id]
-        lock.unlock()
+    func getSnapshot(in context: Context, completion: @escaping (DownloadEntry) -> Void) {
+        completion(DownloadEntry(date: Date(), items: SharedProgressStore.shared.read()))
+    }
 
-        // ── Path 1: direct async update (works in foreground) ───────────────
-        if let activity = activity {
+    func getTimeline(in context: Context, completion: @escaping (Timeline<DownloadEntry>) -> Void) {
+        let items = SharedProgressStore.shared.read()
+
+        // Update all active Live Activities from the widget extension process.
+        // This is the key: activity.update() called here runs in a SEPARATE PROCESS
+        // that iOS never suspends, so it always executes regardless of main app state.
+        if #available(iOS 16.2, *) {
+            updateLiveActivities(from: items)
+        }
+
+        let entry = DownloadEntry(date: Date(), items: items)
+
+        // If there are active downloads, request a refresh in 1 second.
+        // WidgetKit may throttle this but will try to honour it.
+        let nextRefresh = Date().addingTimeInterval(items.isEmpty ? 60 : 1)
+        let timeline = Timeline(entries: [entry], policy: .after(nextRefresh))
+        completion(timeline)
+    }
+
+    @available(iOS 16.2, *)
+    private func updateLiveActivities(from items: [SharedProgress]) {
+        // Get all currently active Live Activities for our type
+        let activeActivities = Activity<DownloadActivityAttributes>.activities
+
+        for item in items {
+            // Find the matching activity by its downloadId attribute
+            guard let activity = activeActivities.first(where: {
+                $0.attributes.downloadId == item.id
+            }) else { continue }
+
             let state = DownloadActivityAttributes.ContentState(
-                progress: min(max(progress, 0), 1),
-                downloadedBytes: downloaded, totalBytes: total,
-                speedBytesPerSec: speed, statusLabel: "Downloading"
+                progress: item.progress,
+                downloadedBytes: item.downloadedBytes,
+                totalBytes: item.totalBytes,
+                speedBytesPerSec: item.speedBytesPerSec,
+                statusLabel: "Downloading"
             )
-            Task.detached(priority: .userInitiated) {
+            // Task here runs in the widget extension process — never suspended
+            Task {
                 await activity.update(ActivityContent(state: state, staleDate: nil))
             }
-        }
-
-        // ── Path 2: App Group → widget extension process (background reliable) ─
-        // Write progress to shared UserDefaults so the widget extension can read it.
-        // Then wake the extension by reloading timelines.
-        // The widget extension runs in its OWN process — never suspended by iOS.
-        // When getTimeline() is called, it reads this data and calls activity.update()
-        // from a process that iOS has explicitly woken for this purpose.
-        SharedProgressStore.shared.update(
-            id: id, filename: filename, progress: progress,
-            downloaded: downloaded, total: total, speed: speed
-        )
-        WidgetCenter.shared.reloadTimelines(ofKind: "DownloadWidget")
-    }
-
-    func end(id: String, success: Bool, downloaded: Int64 = 0) {
-        lock.lock()
-        let activity = activities[id]
-        let dl       = lastBytes[id] ?? downloaded
-        activities.removeValue(forKey: id)
-        filenames.removeValue(forKey: id)
-        lastBytes.removeValue(forKey: id)
-        lastTime.removeValue(forKey: id)
-        lock.unlock()
-
-        SharedProgressStore.shared.remove(id: id)
-        WidgetCenter.shared.reloadTimelines(ofKind: "DownloadWidget")
-
-        guard let activity = activity else { return }
-        let state = DownloadActivityAttributes.ContentState(
-            progress: success ? 1.0 : 0.0,
-            downloadedBytes: dl, totalBytes: 0, speedBytesPerSec: 0,
-            statusLabel: success ? "Done" : "Failed"
-        )
-        Task.detached {
-            await activity.end(
-                ActivityContent(state: state, staleDate: nil),
-                dismissalPolicy: .after(Date().addingTimeInterval(5))
-            )
         }
     }
 }
 
-final class LiveActivityBridge {
-    static let shared = LiveActivityBridge()
-    private init() {}
-
-    func start(id: String, filename: String) {
-        if #available(iOS 16.2, *) { LiveActivityManager.shared.start(id: id, filename: filename) }
-    }
-    func update(id: String, progress: Double, downloaded: Int64, total: Int64) {
-        if #available(iOS 16.2, *) {
-            LiveActivityManager.shared.update(id: id, progress: progress,
-                                              downloaded: downloaded, total: total)
+// Minimal home screen widget view — not visible to user (accessory or no placement)
+struct DownloadWidgetView: View {
+    let entry: DownloadEntry
+    var body: some View {
+        if entry.items.isEmpty {
+            Image(systemName: "arrow.down.circle")
+                .foregroundColor(.secondary)
+        } else {
+            VStack(spacing: 2) {
+                ForEach(entry.items.prefix(2), id: \.id) { item in
+                    ProgressView(value: item.progress)
+                        .tint(.blue)
+                }
+            }
+            .padding(4)
         }
     }
-    func end(id: String, success: Bool, downloaded: Int64 = 0) {
-        if #available(iOS 16.2, *) {
-            LiveActivityManager.shared.end(id: id, success: success, downloaded: downloaded)
+}
+
+@available(iOS 16.2, *)
+struct DownloadWidget: Widget {
+    static let kind = "DownloadWidget"
+
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: Self.kind, provider: DownloadTimelineProvider()) { entry in
+            DownloadWidgetView(entry: entry)
+        }
+        .configurationDisplayName("Downloads")
+        .description("Tracks active download progress")
+        .supportedFamilies([.systemSmall, .accessoryCircular, .accessoryRectangular])
+        .contentMarginsDisabled()
+    }
+}
+
+// MARK: - Live Activity widget (Dynamic Island + Lock Screen UI)
+
+@available(iOS 16.2, *)
+struct DownloadLiveActivityWidget: Widget {
+    var body: some WidgetConfiguration {
+        ActivityConfiguration(for: DownloadActivityAttributes.self) { context in
+            // Lock Screen / StandBy view
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Image(systemName: statusIcon(context.state))
+                        .foregroundColor(statusColor(context.state))
+                        .font(.title3)
+                    Text(context.attributes.filename)
+                        .font(.headline).lineLimit(1).truncationMode(.middle)
+                    Spacer()
+                    Text(String(format: "%.0f%%", context.state.progress * 100))
+                        .font(.headline).monospacedDigit()
+                        .foregroundColor(statusColor(context.state))
+                }
+                ProgressView(value: context.state.progress)
+                    .progressViewStyle(.linear)
+                    .tint(statusColor(context.state))
+                    .scaleEffect(x: 1, y: 1.5)
+                HStack {
+                    if context.state.totalBytes > 0 {
+                        Text("\(formatBytes(context.state.downloadedBytes)) / \(formatBytes(context.state.totalBytes))")
+                            .font(.caption).foregroundColor(.secondary)
+                    } else {
+                        Text(formatBytes(context.state.downloadedBytes))
+                            .font(.caption).foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    Text(formatSpeed(context.state.speedBytesPerSec))
+                        .font(.caption).foregroundColor(.secondary).monospacedDigit()
+                }
+            }
+            .padding()
+            .activityBackgroundTint(Color(.systemBackground).opacity(0.9))
+
+        } dynamicIsland: { context in
+            DynamicIsland {
+                DynamicIslandExpandedRegion(.leading) {
+                    Image(systemName: "arrow.down.circle.fill")
+                        .foregroundColor(.blue).font(.title3).padding(.leading, 4)
+                }
+                DynamicIslandExpandedRegion(.trailing) {
+                    Text(String(format: "%.0f%%", context.state.progress * 100))
+                        .bold().monospacedDigit().padding(.trailing, 4)
+                }
+                DynamicIslandExpandedRegion(.bottom) {
+                    VStack(spacing: 4) {
+                        HStack {
+                            Text(context.attributes.filename)
+                                .font(.caption).lineLimit(1).truncationMode(.middle)
+                            Spacer()
+                        }
+                        ProgressView(value: context.state.progress)
+                            .progressViewStyle(.linear).tint(.blue)
+                        HStack {
+                            Text(formatBytes(context.state.downloadedBytes))
+                                .font(.caption2).foregroundColor(.secondary)
+                            Spacer()
+                            Text(formatSpeed(context.state.speedBytesPerSec))
+                                .font(.caption2).foregroundColor(.secondary).monospacedDigit()
+                        }
+                    }
+                    .padding(.horizontal, 12).padding(.bottom, 6)
+                }
+            } compactLeading: {
+                Image(systemName: "arrow.down.circle.fill").foregroundColor(.blue)
+            } compactTrailing: {
+                Text(String(format: "%.0f%%", context.state.progress * 100))
+                    .monospacedDigit().font(.caption2).bold()
+            } minimal: {
+                Image(systemName: "arrow.down.circle.fill").foregroundColor(.blue)
+            }
+            .widgetURL(URL(string: "sddownloadmanager://open"))
+            .keylineTint(.blue)
+        }
+    }
+
+    private func statusIcon(_ state: DownloadActivityAttributes.ContentState) -> String {
+        switch state.statusLabel {
+        case "Done":   return "checkmark.circle.fill"
+        case "Failed": return "xmark.circle.fill"
+        default:       return "arrow.down.circle.fill"
+        }
+    }
+
+    private func statusColor(_ state: DownloadActivityAttributes.ContentState) -> Color {
+        switch state.statusLabel {
+        case "Done":   return .green
+        case "Failed": return .red
+        default:       return .blue
         }
     }
 }
