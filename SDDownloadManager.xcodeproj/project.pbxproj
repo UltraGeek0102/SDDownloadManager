@@ -62,7 +62,7 @@
 
 /* Begin PBXFileReference section */
 		FA40 /* SharedProgressStore.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = SharedProgressStore.swift; path = LiveActivity/SharedProgressStore.swift; sourceTree = "<group>"; };
-		FA41 /* SharedProgressStore.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = SharedProgressStore.swift; path = "Widgets/SharedProgressStore.swift"; sourceTree = "<group>"; };
+		FA41 /* SharedProgressStore.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = SharedProgressStore.swift; path = Widgets/SharedProgressStore.swift; sourceTree = "<group>"; };
 		FA50 /* SDDownloadManager.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SDDownloadManager.entitlements; sourceTree = "<group>"; };
 		FA51 /* DownloadWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; name = DownloadWidget.entitlements; path = "Widgets/DownloadWidget.entitlements"; sourceTree = "<group>"; };
 
