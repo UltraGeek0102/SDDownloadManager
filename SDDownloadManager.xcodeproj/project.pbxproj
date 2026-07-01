@@ -62,9 +62,9 @@
 
 /* Begin PBXFileReference section */
 		FA40 /* SharedProgressStore.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = SharedProgressStore.swift; path = LiveActivity/SharedProgressStore.swift; sourceTree = "<group>"; };
-		FA41 /* SharedProgressStore.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = SharedProgressStore.swift; path = Widgets/SharedProgressStore.swift; sourceTree = "<group>"; };
+		FA41 /* SharedProgressStore.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = SharedProgressStore.swift; path = SDDownloadManager/Widgets/SharedProgressStore.swift; sourceTree = "<group>"; };
 		FA50 /* SDDownloadManager.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SDDownloadManager.entitlements; sourceTree = "<group>"; };
-		FA51 /* DownloadWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; name = DownloadWidget.entitlements; path = "Widgets/DownloadWidget.entitlements"; sourceTree = "<group>"; };
+		FA51 /* DownloadWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; name = DownloadWidget.entitlements; path = SDDownloadManager/Widgets/DownloadWidget.entitlements; sourceTree = "<group>"; };
 
 		ACE3B6811F35D5BA00684BE6 /* SDDownloadManager.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SDDownloadManager.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		ACE3B6841F35D5BA00684BE6 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
