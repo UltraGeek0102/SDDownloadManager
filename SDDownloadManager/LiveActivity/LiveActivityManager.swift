@@ -7,22 +7,28 @@ final class LiveActivityManager {
     static let shared = LiveActivityManager()
     private init() {}
 
-    private var activities: [String: Activity<DownloadActivityAttributes>] = [:]
-    private var filenames:  [String: String] = [:]
-    private var lastBytes:  [String: Int64]  = [:]
-    private var lastTime:   [String: Date]   = [:]
-    private let lock = NSLock()
+    // Use an actor-isolated store instead of NSLock so async contexts are safe
+    private let store = ActivityStore()
 
     // MARK: - Public API
 
     func start(id: String, filename: String) {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
-        lock.lock(); filenames[id] = filename; lock.unlock()
 
         Task.detached(priority: .userInitiated) { [weak self] in
             guard let self = self else { return }
-            self.lock.lock(); let old = self.activities[id]; self.lock.unlock()
-            if let old = old { await old.end(dismissalPolicy: .immediate) }
+            await self.store.setFilename(id: id, filename: filename)
+
+            // End any existing activity for this id
+            if let old = await self.store.activity(id: id) {
+                await old.end(
+                    ActivityContent(
+                        state: DownloadActivityAttributes.ContentState(
+                            progress: 0, downloadedBytes: 0, totalBytes: 0,
+                            speedBytesPerSec: 0, statusLabel: "Stopped"),
+                        staleDate: nil),
+                    dismissalPolicy: .immediate)
+            }
 
             let attrs = DownloadActivityAttributes(downloadId: id, filename: filename)
             let state = DownloadActivityAttributes.ContentState(
@@ -34,69 +40,63 @@ final class LiveActivityManager {
                     attributes: attrs,
                     content: ActivityContent(state: state, staleDate: nil)
                 )
-                self.lock.lock(); self.activities[id] = act; self.lock.unlock()
+                await self.store.setActivity(id: id, activity: act)
                 print("[LA] started \(filename)")
-            } catch { print("[LA] start error: \(error)") }
+            } catch {
+                print("[LA] start error: \(error)")
+            }
         }
     }
 
+    /// Called from URLSession delegate (didWriteData) — synchronous, fast.
+    /// Writes to App Group then wakes widget extension for the reliable background path.
     func update(id: String, progress: Double, downloaded: Int64, total: Int64) {
-        lock.lock()
-        let filename = filenames[id] ?? ""
-        let now      = Date()
-        let elapsed  = now.timeIntervalSince(lastTime[id] ?? now)
-        let delta    = downloaded - (lastBytes[id] ?? 0)
-        let speed    = elapsed > 0.1 ? Int64(Double(max(delta, 0)) / elapsed) : 0
-        lastBytes[id] = downloaded
-        lastTime[id]  = now
-        let activity  = activities[id]
-        lock.unlock()
+        // Snapshot state synchronously — this method is called from URLSession thread
+        Task.detached(priority: .userInitiated) { [weak self] in
+            guard let self = self else { return }
 
-        // ── Path 1: direct async update (works in foreground) ───────────────
-        if let activity = activity {
+            let filename = await self.store.filename(id: id) ?? ""
+            let speed    = await self.store.calculateSpeed(id: id, downloaded: downloaded)
+            let activity = await self.store.activity(id: id)
+
             let state = DownloadActivityAttributes.ContentState(
                 progress: min(max(progress, 0), 1),
                 downloadedBytes: downloaded, totalBytes: total,
                 speedBytesPerSec: speed, statusLabel: "Downloading"
             )
-            Task.detached(priority: .userInitiated) {
-                await activity.update(ActivityContent(state: state, staleDate: nil))
-            }
-        }
+            let content = ActivityContent(state: state, staleDate: nil)
 
-        // ── Path 2: App Group → widget extension process (background reliable) ─
-        // Write progress to shared UserDefaults so the widget extension can read it.
-        // Then wake the extension by reloading timelines.
-        // The widget extension runs in its OWN process — never suspended by iOS.
-        // When getTimeline() is called, it reads this data and calls activity.update()
-        // from a process that iOS has explicitly woken for this purpose.
-        SharedProgressStore.shared.update(
-            id: id, filename: filename, progress: progress,
-            downloaded: downloaded, total: total, speed: speed
-        )
-        WidgetCenter.shared.reloadTimelines(ofKind: "DownloadWidget")
+            // Path 1: direct update (works in foreground)
+            if let activity = activity {
+                await activity.update(content)
+            }
+
+            // Path 2: App Group → widget extension (works in background)
+            SharedProgressStore.shared.update(
+                id: id, filename: filename, progress: progress,
+                downloaded: downloaded, total: total, speed: speed
+            )
+            WidgetCenter.shared.reloadTimelines(ofKind: "DownloadWidget")
+        }
     }
 
-    func end(id: String, success: Bool, downloaded: Int64 = 0) {
-        lock.lock()
-        let activity = activities[id]
-        let dl       = lastBytes[id] ?? downloaded
-        activities.removeValue(forKey: id)
-        filenames.removeValue(forKey: id)
-        lastBytes.removeValue(forKey: id)
-        lastTime.removeValue(forKey: id)
-        lock.unlock()
+    func end(id: String, success: Bool) {
+        Task.detached { [weak self] in
+            guard let self = self else { return }
 
-        SharedProgressStore.shared.remove(id: id)
-        WidgetCenter.shared.reloadTimelines(ofKind: "DownloadWidget")
+            let dl       = await self.store.lastBytes(id: id) ?? 0
+            let activity = await self.store.activity(id: id)
+            await self.store.removeAll(id: id)
 
-        guard let activity = activity else { return }
-        let state = DownloadActivityAttributes.ContentState(
-            progress: success ? 1.0 : 0.0,
-            downloadedBytes: dl, totalBytes: 0, speedBytesPerSec: 0,
-            statusLabel: success ? "Done" : "Failed"
-        )
-        Task.detached {
+            SharedProgressStore.shared.remove(id: id)
+            WidgetCenter.shared.reloadTimelines(ofKind: "DownloadWidget")
+
+            guard let activity = activity else { return }
+            let state = DownloadActivityAttributes.ContentState(
+                progress: success ? 1.0 : 0.0,
+                downloadedBytes: dl, totalBytes: 0, speedBytesPerSec: 0,
+                statusLabel: success ? "Done" : "Failed"
+            )
             await activity.end(
                 ActivityContent(state: state, staleDate: nil),
                 dismissalPolicy: .after(Date().addingTimeInterval(5))
@@ -104,6 +104,41 @@ final class LiveActivityManager {
         }
     }
 }
+
+// MARK: - Actor-isolated state store (eliminates NSLock in async contexts)
+
+@available(iOS 16.2, *)
+private actor ActivityStore {
+    private var activities: [String: Activity<DownloadActivityAttributes>] = [:]
+    private var filenames:  [String: String] = [:]
+    private var lastBytes:  [String: Int64]  = [:]
+    private var lastTimes:  [String: Date]   = [:]
+
+    func activity(id: String) -> Activity<DownloadActivityAttributes>? { activities[id] }
+    func setActivity(id: String, activity: Activity<DownloadActivityAttributes>) { activities[id] = activity }
+    func filename(id: String) -> String? { filenames[id] }
+    func setFilename(id: String, filename: String) { filenames[id] = filename }
+    func lastBytes(id: String) -> Int64? { lastBytes[id] }
+
+    func calculateSpeed(id: String, downloaded: Int64) -> Int64 {
+        let now     = Date()
+        let elapsed = now.timeIntervalSince(lastTimes[id] ?? now)
+        let delta   = downloaded - (lastBytes[id] ?? 0)
+        let speed   = elapsed > 0.1 ? Int64(Double(max(delta, 0)) / elapsed) : 0
+        lastBytes[id] = downloaded
+        lastTimes[id]  = now
+        return speed
+    }
+
+    func removeAll(id: String) {
+        activities.removeValue(forKey: id)
+        filenames.removeValue(forKey: id)
+        lastBytes.removeValue(forKey: id)
+        lastTimes.removeValue(forKey: id)
+    }
+}
+
+// MARK: - Version-safe wrapper
 
 final class LiveActivityBridge {
     static let shared = LiveActivityBridge()
@@ -118,9 +153,7 @@ final class LiveActivityBridge {
                                               downloaded: downloaded, total: total)
         }
     }
-    func end(id: String, success: Bool, downloaded: Int64 = 0) {
-        if #available(iOS 16.2, *) {
-            LiveActivityManager.shared.end(id: id, success: success, downloaded: downloaded)
-        }
+    func end(id: String, success: Bool) {
+        if #available(iOS 16.2, *) { LiveActivityManager.shared.end(id: id, success: success) }
     }
 }
